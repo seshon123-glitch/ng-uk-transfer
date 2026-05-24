@@ -1,0 +1,71 @@
+<?php
+/*
+Plugin Name: NG-UK Money Transfer
+Plugin URI: https://daphkoy.com
+Description: Nigeria to United Kingdom Money Transfer Plugin
+Version: 2.0
+Author: Beejay
+*/
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/*
+|--------------------------------------------------------------------------
+| CONSTANTS
+|--------------------------------------------------------------------------
+*/
+
+define('NGUK_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('NGUK_PLUGIN_URL', plugin_dir_url(__FILE__));
+
+/*
+|--------------------------------------------------------------------------
+| INCLUDE FILES
+|--------------------------------------------------------------------------
+*/
+
+require_once NGUK_PLUGIN_PATH . 'includes/class-database.php';
+require_once NGUK_PLUGIN_PATH . 'includes/class-dashboard.php';
+
+/*
+|--------------------------------------------------------------------------
+| CREATE DATABASE TABLES
+|--------------------------------------------------------------------------
+*/
+
+register_activation_hook(__FILE__, array('NGUK_Database', 'create_tables'));
+
+/*
+|--------------------------------------------------------------------------
+| LOAD DASHBOARD
+|--------------------------------------------------------------------------
+*/
+
+function nguk_load_dashboard() {
+
+    add_menu_page(
+        'NG-UK Transfer',
+        'NG-UK Transfer',
+        'manage_options',
+        'nguk-transfer',
+        'nguk_dashboard_page',
+        'dashicons-money-alt',
+        6
+    );
+}
+
+add_action('admin_menu', 'nguk_load_dashboard');
+
+/*
+|--------------------------------------------------------------------------
+| DASHBOARD PAGE
+|--------------------------------------------------------------------------
+*/
+
+function nguk_dashboard_page() {
+
+    $dashboard = new NGUK_Dashboard();
+    $dashboard->dashboard_page();
+}
