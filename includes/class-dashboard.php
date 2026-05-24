@@ -178,6 +178,22 @@ class NGUK_Dashboard {
                 return;
             }
         }
+        if (isset($_POST['save_business_settings'])) {
+
+    update_option('nguk_business_name', sanitize_text_field($_POST['business_name']));
+
+    update_option('nguk_business_phone', sanitize_text_field($_POST['business_phone']));
+
+    update_option('nguk_business_email', sanitize_email($_POST['business_email']));
+
+    update_option('nguk_business_address', sanitize_textarea_field($_POST['business_address']));
+
+    update_option('nguk_business_website', sanitize_text_field($_POST['business_website']));
+
+    update_option('nguk_business_logo', sanitize_text_field($_POST['business_logo']));
+
+    echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
+}
         if (isset($_POST['save_transaction'])) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
@@ -284,6 +300,96 @@ if (isset($_GET['delete_transaction'])) {
                 </div>
 
             </div>
+            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+
+    <h2>Business Details</h2>
+
+    <form method="post">
+
+        <table class="form-table">
+
+            <tr>
+                <th>Business Name</th>
+                <td>
+                    <input type="text"
+                           name="business_name"
+                           class="regular-text"
+                           value="<?php echo esc_attr(get_option('nguk_business_name')); ?>">
+                </td>
+            </tr>
+
+            <tr>
+                <th>Phone Number</th>
+                <td>
+                    <input type="text"
+                           name="business_phone"
+                           class="regular-text"
+                           value="<?php echo esc_attr(get_option('nguk_business_phone')); ?>">
+                </td>
+            </tr>
+
+            <tr>
+                <th>Email Address</th>
+                <td>
+                    <input type="email"
+                           name="business_email"
+                           class="regular-text"
+                           value="<?php echo esc_attr(get_option('nguk_business_email')); ?>">
+                </td>
+            </tr>
+
+            <tr>
+                <th>Business Address</th>
+                <td>
+                    <textarea name="business_address"
+                              class="large-text"><?php echo esc_textarea(get_option('nguk_business_address')); ?></textarea>
+                </td>
+            </tr>
+
+            <tr>
+                <th>Website</th>
+                <td>
+                    <input type="text"
+                           name="business_website"
+                           class="regular-text"
+                           value="<?php echo esc_attr(get_option('nguk_business_website')); ?>">
+              <td>
+
+    <input type="text"
+           name="business_logo"
+           id="business_logo"
+           class="regular-text"
+           value="<?php echo esc_attr(get_option('nguk_business_logo')); ?>">
+
+    <button type="button"
+            class="button"
+            id="upload_logo_button">
+
+        Upload Logo
+
+    </button>
+
+    <p>
+        Upload business logo using WordPress Media Library.
+    </p>
+
+</td>
+            </tr>
+
+        </table>
+
+        <p>
+
+            <input type="submit"
+                   name="save_business_settings"
+                   class="button button-primary"
+                   value="Save Business Details">
+
+        </p>
+
+    </form>
+
+</div>
 
             <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
@@ -554,6 +660,37 @@ if ($transactions) {
             </div>
 
         </div>
+        <script>
+
+jQuery(document).ready(function($){
+
+    $('#upload_logo_button').click(function(e){
+
+        e.preventDefault();
+
+        var image = wp.media({
+
+            title: 'Upload Business Logo',
+
+            multiple: false
+
+        }).open()
+
+        .on('select', function(){
+
+            var uploaded_image = image.state().get('selection').first();
+
+            var image_url = uploaded_image.toJSON().url;
+
+            $('#business_logo').val(image_url);
+
+        });
+
+    });
+
+});
+
+</script>
 
         <?php
     }
