@@ -28,6 +28,46 @@ class NGUK_Dashboard {
                 ?>
 
                 <div class="wrap">
+                    <?php
+
+$business_logo = get_option('nguk_business_logo');
+
+$business_name = get_option('nguk_business_name');
+
+$business_phone = get_option('nguk_business_phone');
+
+$business_email = get_option('nguk_business_email');
+
+$business_address = get_option('nguk_business_address');
+
+?>
+
+<div style="text-align:center;margin-bottom:25px;">
+
+    <?php if (!empty($business_logo)) : ?>
+
+        <img src="<?php echo esc_url($business_logo); ?>"
+             style="max-width:120px;height:auto;margin-bottom:15px;">
+
+    <?php endif; ?>
+
+    <h1 style="margin:0;">
+        <?php echo esc_html($business_name); ?>
+    </h1>
+
+    <p style="margin:5px 0;">
+        <?php echo esc_html($business_phone); ?>
+    </p>
+
+    <p style="margin:5px 0;">
+        <?php echo esc_html($business_email); ?>
+    </p>
+
+    <p style="margin:5px 0;">
+        <?php echo esc_html($business_address); ?>
+    </p>
+
+</div>
 
                     <h1>Transaction Receipt</h1>
 
