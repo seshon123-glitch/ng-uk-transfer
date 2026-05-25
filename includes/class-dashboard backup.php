@@ -166,7 +166,43 @@ $business_address = get_option('nguk_business_address');
                 return;
             }
         }
+/*
+=========================================
+SAVE BENEFICIARY
+=========================================
+*/
 
+if (isset($_POST['save_beneficiary'])) {
+
+    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+    $wpdb->insert(
+
+        $beneficiaries_table,
+
+        array(
+
+            'customer_id' => intval($_POST['customer_id']),
+
+            'beneficiary_name' => sanitize_text_field($_POST['beneficiary_name']),
+
+            'bank_name' => sanitize_text_field($_POST['bank_name']),
+
+            'account_name' => sanitize_text_field($_POST['account_name']),
+
+            'account_number' => sanitize_text_field($_POST['account_number']),
+
+            'sort_code' => sanitize_text_field($_POST['sort_code']),
+
+            'notes' => sanitize_textarea_field($_POST['beneficiary_notes'])
+
+        )
+
+    );
+
+    echo '<div class="updated"><p>Beneficiary saved successfully.</p></div>';
+
+}
         /* =========================
            VIEW CUSTOMER
         ========================== */
@@ -262,7 +298,93 @@ $business_address = get_option('nguk_business_address');
                         </tr>
 
                     </table>
+<hr style="margin:40px 0;">
 
+<h2>Add Beneficiary</h2>
+
+<form method="post">
+
+<input type="hidden"
+       name="customer_id"
+       value="<?php echo $customer->id; ?>">
+
+<table class="form-table">
+
+<tr>
+    <th>Beneficiary Name</th>
+
+    <td>
+        <input type="text"
+               name="beneficiary_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Bank Name</th>
+
+    <td>
+        <input type="text"
+               name="bank_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Account Name</th>
+
+    <td>
+        <input type="text"
+               name="account_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Account Number</th>
+
+    <td>
+        <input type="text"
+               name="account_number"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Sort Code</th>
+
+    <td>
+        <input type="text"
+               name="sort_code"
+               class="regular-text">
+    </td>
+</tr>
+
+<tr>
+    <th>Notes</th>
+
+    <td>
+        <textarea name="beneficiary_notes"
+                  class="large-text"></textarea>
+    </td>
+</tr>
+
+</table>
+
+<p>
+
+<input type="submit"
+       name="save_beneficiary"
+       class="button button-primary"
+       value="Save Beneficiary">
+
+</p>
+
+</form>
                     <p style="margin-top:20px;">
 
                         <a href="?page=nguk-transfer"
@@ -324,6 +446,7 @@ if (isset($_POST['save_bank_account'])) {
     echo '<div class="updated"><p>Bank account saved successfully.</p></div>';
 
 }
+
         if (isset($_POST['save_transaction'])) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
@@ -355,6 +478,9 @@ if (isset($_POST['save_bank_account'])) {
     );
 
     $customer_name = $customer ? $customer->customer_name : '';
+    $nigeria_bank = sanitize_textarea_field($_POST['nigeria_bank_details']);
+
+$uk_bank = sanitize_textarea_field($_POST['uk_bank_details']);
 
     $wpdb->insert(
 
@@ -373,6 +499,9 @@ if (isset($_POST['save_bank_account'])) {
             'buy_rate' => $buy_rate,
 
             'sell_rate' => $sell_rate,
+            'nigeria_bank_details' => $nigeria_bank,
+
+'uk_bank_details' => $uk_bank,
 
             'status' => 'Pending'
 
@@ -678,36 +807,111 @@ if (isset($_GET['delete_transaction'])) {
     <form method="post">
 
         <table class="form-table">
-            <tr>
+ <tr>
 
-    <th>Nigeria Bank</th>
+<th>Select Nigeria Bank</th>
 
-    <td>
+<td>
 
-        <textarea
-            name="nigeria_bank"
-            rows="4"
-            class="large-text"></textarea>
+<select name="nigeria_bank_details" style="width:100%;">
 
-    </td>
+<option value="">
+Select Nigeria Bank
+</option>
+
+<?php
+
+$bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+$nigeria_accounts = $wpdb->get_results(
+
+    "SELECT * FROM $bank_accounts_table
+     WHERE account_type LIKE '%Nigeria%'
+     ORDER BY bank_name ASC"
+
+);
+
+if ($nigeria_accounts) {
+
+    foreach ($nigeria_accounts as $account) {
+
+        $details =
+            $account->bank_name . "\n" .
+            $account->account_name . "\n" .
+            $account->account_number . "\n" .
+            $account->extra_details;
+
+        ?>
+
+        <option value="<?php echo esc_attr($details); ?>">
+
+            <?php echo esc_html($account->bank_name . ' - ' . $account->account_name); ?>
+
+        </option>
+
+        <?php
+    }
+}
+
+?>
+
+</select>
+
+</td>
 
 </tr>
 
 <tr>
 
-    <th>UK Bank</th>
+<th>Select UK Bank</th>
 
-    <td>
+<td>
 
-        <textarea
-            name="uk_bank"
-            rows="4"
-            class="large-text"></textarea>
+<select name="uk_bank_details" style="width:100%;">
 
-    </td>
+<option value="">
+Select UK Bank
+</option>
+
+<?php
+
+$uk_accounts = $wpdb->get_results(
+
+    "SELECT * FROM $bank_accounts_table
+     WHERE account_type LIKE '%UK%'
+     ORDER BY bank_name ASC"
+
+);
+
+if ($uk_accounts) {
+
+    foreach ($uk_accounts as $account) {
+
+        $details =
+            $account->bank_name . "\n" .
+            $account->account_name . "\n" .
+            $account->account_number . "\n" .
+            $account->extra_details;
+
+        ?>
+
+        <option value="<?php echo esc_attr($details); ?>">
+
+            <?php echo esc_html($account->bank_name . ' - ' . $account->account_name); ?>
+
+        </option>
+
+        <?php
+    }
+}
+
+?>
+
+</select>
+
+</td>
 
 </tr>
-
             <tr>
 
                 <th>Select Customer</th>

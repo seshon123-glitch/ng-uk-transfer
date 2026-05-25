@@ -385,6 +385,95 @@ $business_address = get_option('nguk_business_address');
 </p>
 
 </form>
+<hr style="margin:40px 0;">
+
+<h2>Saved Beneficiaries</h2>
+
+<?php
+
+$beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+$beneficiaries = $wpdb->get_results(
+
+    $wpdb->prepare(
+
+        "SELECT * FROM $beneficiaries_table
+         WHERE customer_id = %d
+         ORDER BY id DESC",
+
+        $customer->id
+
+    )
+
+);
+
+if ($beneficiaries) {
+
+?>
+
+<table class="widefat striped" style="max-width:1000px;">
+
+<thead>
+
+<tr>
+
+<th>Name</th>
+
+<th>Bank</th>
+
+<th>Account Name</th>
+
+<th>Account Number</th>
+
+<th>Sort Code</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<?php foreach ($beneficiaries as $beneficiary) { ?>
+
+<tr>
+
+<td>
+<?php echo esc_html($beneficiary->beneficiary_name); ?>
+</td>
+
+<td>
+<?php echo esc_html($beneficiary->bank_name); ?>
+</td>
+
+<td>
+<?php echo esc_html($beneficiary->account_name); ?>
+</td>
+
+<td>
+<?php echo esc_html($beneficiary->account_number); ?>
+</td>
+
+<td>
+<?php echo esc_html($beneficiary->sort_code); ?>
+</td>
+
+</tr>
+
+<?php } ?>
+
+</tbody>
+
+</table>
+
+<?php
+
+} else {
+
+    echo '<p>No beneficiaries found for this customer.</p>';
+
+}
+
+?>
                     <p style="margin-top:20px;">
 
                         <a href="?page=nguk-transfer"
@@ -867,7 +956,8 @@ if ($nigeria_accounts) {
 
 <td>
 
-<select name="uk_bank_details" style="width:100%;">
+<select id="uk_bank_details"
+        name="uk_bank_details"
 
 <option value="">
 Select UK Bank
@@ -918,7 +1008,8 @@ if ($uk_accounts) {
 
                 <td>
 
-                    <select name="customer_id">
+                   <select id="customer_select"
+        name="customer_id">
 
                         <option value="">
                             Select Customer
@@ -955,6 +1046,73 @@ if ($uk_accounts) {
                 </td>
 
             </tr>
+            <tr>
+
+<th>Select Beneficiary</th>
+
+<td>
+
+<select id="beneficiary_select"
+        name="beneficiary_id"
+        style="width:100%;">
+
+<option value="">
+Select Beneficiary
+</option>
+
+<?php
+
+$beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+$all_beneficiaries = $wpdb->get_results(
+
+    "SELECT * FROM $beneficiaries_table
+     ORDER BY beneficiary_name ASC"
+
+);
+
+if ($all_beneficiaries) {
+
+    foreach ($all_beneficiaries as $beneficiary) {
+
+        ?>
+
+       <option
+
+value="<?php echo $beneficiary->id; ?>"
+data-customer-id="<?php echo $beneficiary->customer_id; ?>"
+
+data-bank="<?php echo esc_attr($beneficiary->bank_name); ?>"
+
+data-account-name="<?php echo esc_attr($beneficiary->account_name); ?>"
+
+data-account-number="<?php echo esc_attr($beneficiary->account_number); ?>"
+
+data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
+
+>
+
+            <?php
+            echo esc_html(
+                $beneficiary->beneficiary_name .
+                ' - ' .
+                $beneficiary->bank_name
+            );
+            ?>
+
+        </option>
+
+        <?php
+    }
+}
+
+?>
+
+</select>
+
+</td>
+
+</tr>
 
             <tr>
 
@@ -1252,7 +1410,66 @@ jQuery(document).ready(function($){
         });
 
     });
+    $('#customer_select').change(function(){
 
+    var customerId = $(this).val();
+
+    $('#beneficiary_select option').each(function(){
+
+        var beneficiaryCustomer =
+            $(this).data('customer-id');
+
+        if(
+            $(this).val() == ''
+        ){
+            $(this).show();
+        }
+
+        else if(
+            beneficiaryCustomer == customerId
+        ){
+            $(this).show();
+        }
+
+        else{
+            $(this).hide();
+        }
+
+    });
+
+    $('#beneficiary_select').val('');
+
+});
+$('#beneficiary_select').change(function(){
+
+    var selected =
+        $(this).find(':selected');
+
+    var bank =
+        selected.data('bank');
+
+    var accountName =
+        selected.data('account-name');
+
+    var accountNumber =
+        selected.data('account-number');
+
+    var sortCode =
+        selected.data('sort-code');
+
+    if(bank){
+
+        var details =
+            bank + "\n" +
+            accountName + "\n" +
+            accountNumber + "\n" +
+            sortCode;
+
+        $('#uk_bank_details').val(details);
+
+    }
+
+});
 });
 
 </script>
