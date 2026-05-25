@@ -355,6 +355,9 @@ if (isset($_POST['save_bank_account'])) {
     );
 
     $customer_name = $customer ? $customer->customer_name : '';
+    $nigeria_bank = sanitize_textarea_field($_POST['nigeria_bank_details']);
+
+$uk_bank = sanitize_textarea_field($_POST['uk_bank_details']);
 
     $wpdb->insert(
 
@@ -373,6 +376,9 @@ if (isset($_POST['save_bank_account'])) {
             'buy_rate' => $buy_rate,
 
             'sell_rate' => $sell_rate,
+            'nigeria_bank_details' => $nigeria_bank,
+
+'uk_bank_details' => $uk_bank,
 
             'status' => 'Pending'
 
@@ -678,36 +684,111 @@ if (isset($_GET['delete_transaction'])) {
     <form method="post">
 
         <table class="form-table">
-            <tr>
+ <tr>
 
-    <th>Nigeria Bank</th>
+<th>Select Nigeria Bank</th>
 
-    <td>
+<td>
 
-        <textarea
-            name="nigeria_bank"
-            rows="4"
-            class="large-text"></textarea>
+<select name="nigeria_bank_details" style="width:100%;">
 
-    </td>
+<option value="">
+Select Nigeria Bank
+</option>
+
+<?php
+
+$bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+$nigeria_accounts = $wpdb->get_results(
+
+    "SELECT * FROM $bank_accounts_table
+     WHERE account_type LIKE '%Nigeria%'
+     ORDER BY bank_name ASC"
+
+);
+
+if ($nigeria_accounts) {
+
+    foreach ($nigeria_accounts as $account) {
+
+        $details =
+            $account->bank_name . "\n" .
+            $account->account_name . "\n" .
+            $account->account_number . "\n" .
+            $account->extra_details;
+
+        ?>
+
+        <option value="<?php echo esc_attr($details); ?>">
+
+            <?php echo esc_html($account->bank_name . ' - ' . $account->account_name); ?>
+
+        </option>
+
+        <?php
+    }
+}
+
+?>
+
+</select>
+
+</td>
 
 </tr>
 
 <tr>
 
-    <th>UK Bank</th>
+<th>Select UK Bank</th>
 
-    <td>
+<td>
 
-        <textarea
-            name="uk_bank"
-            rows="4"
-            class="large-text"></textarea>
+<select name="uk_bank_details" style="width:100%;">
 
-    </td>
+<option value="">
+Select UK Bank
+</option>
+
+<?php
+
+$uk_accounts = $wpdb->get_results(
+
+    "SELECT * FROM $bank_accounts_table
+     WHERE account_type LIKE '%UK%'
+     ORDER BY bank_name ASC"
+
+);
+
+if ($uk_accounts) {
+
+    foreach ($uk_accounts as $account) {
+
+        $details =
+            $account->bank_name . "\n" .
+            $account->account_name . "\n" .
+            $account->account_number . "\n" .
+            $account->extra_details;
+
+        ?>
+
+        <option value="<?php echo esc_attr($details); ?>">
+
+            <?php echo esc_html($account->bank_name . ' - ' . $account->account_name); ?>
+
+        </option>
+
+        <?php
+    }
+}
+
+?>
+
+</select>
+
+</td>
 
 </tr>
-
             <tr>
 
                 <th>Select Customer</th>

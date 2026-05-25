@@ -85,6 +85,35 @@ class NGUK_Database {
         ) $charset_collate;";
 
         dbDelta($customers_sql);
+        /*
+=========================================
+BANK ACCOUNTS TABLE
+=========================================
+*/
+
+$bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+$bank_accounts_sql = "CREATE TABLE $bank_accounts_table (
+
+    id mediumint(9) NOT NULL AUTO_INCREMENT,
+
+    account_type varchar(50) NOT NULL,
+
+    bank_name varchar(255) NOT NULL,
+
+    account_name varchar(255) NOT NULL,
+
+    account_number varchar(255) NOT NULL,
+
+    extra_details text NULL,
+
+    created_at datetime DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id)
+
+) $charset_collate;";
+
+dbDelta($bank_accounts_sql);
 
     }
 
