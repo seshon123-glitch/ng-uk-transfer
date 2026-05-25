@@ -295,7 +295,9 @@ $business_address = get_option('nguk_business_address');
         $pounds_amount = 0;
 
     }
- $profit = ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate);
+ $profit = abs(
+    ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate)
+);
     $customers_table = $wpdb->prefix . 'nguk_customers';
 
     $customer = $wpdb->get_row(
@@ -740,7 +742,127 @@ if ($transactions) {
             </div>
 
         </div>
-        
+        <?php
+
+$transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+$monthly_turnovers = $wpdb->get_results(
+
+    "SELECT 
+
+        DATE_FORMAT(created_at, '%M %Y') as month_year,
+
+        COUNT(*) as total_transactions,
+
+        SUM(naira_amount) as total_naira,
+
+        SUM(pounds_amount) as total_pounds,
+
+        SUM(profit) as total_profit
+
+    FROM $transactions_table
+
+    GROUP BY YEAR(created_at), MONTH(created_at)
+
+    ORDER BY created_at DESC"
+
+);
+
+?>
+
+<div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+
+    <h2>Monthly Turnovers</h2>
+
+    <table class="widefat striped"
+
+style="
+margin-top:20px;
+border-radius:12px;
+overflow:hidden;
+font-size:15px;
+box-shadow:0 2px 10px rgba(0,0,0,0.05);
+">
+
+        <thead style="background:#f7f7f7;">
+
+            <tr>
+
+                <th>Month</th>
+
+                <th>Total Transactions</th>
+
+                <th>Total Naira</th>
+
+                <th>Total Pounds</th>
+
+                <th>Total Profit</th>
+
+            </tr>
+
+        </thead>
+
+        <tbody>
+
+            <?php
+
+            if ($monthly_turnovers) {
+
+                foreach ($monthly_turnovers as $turnover) {
+
+                    ?>
+
+                 <tr style="height:60px;">
+
+                        <td>
+                            <?php echo esc_html($turnover->month_year); ?>
+                        </td>
+
+                        <td>
+                            <?php echo number_format($turnover->total_transactions); ?>
+                        </td>
+
+                        <td>
+                            ₦<?php echo number_format($turnover->total_naira, 2); ?>
+                        </td>
+
+                        <td>
+                            £<?php echo number_format($turnover->total_pounds, 2); ?>
+                        </td>
+
+                        <td style="color:green;">
+                            £<?php echo number_format($turnover->total_profit, 2); ?>
+                        </td>
+
+                    </tr>
+
+                    <?php
+                }
+
+            } else {
+
+                ?>
+
+                <tr>
+
+                    <td colspan="5">
+
+                        No monthly turnover data found.
+
+                    </td>
+
+                </tr>
+
+                <?php
+            }
+
+            ?>
+
+        </tbody>
+
+    </table>
+
+</div>
         <script>
 
 jQuery(document).ready(function($){
