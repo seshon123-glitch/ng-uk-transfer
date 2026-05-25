@@ -26,7 +26,37 @@ class NGUK_Dashboard {
             if ($transaction) {
 
                 ?>
+<style>
 
+#wpadminbar,
+#adminmenu,
+#adminmenuback,
+#adminmenuwrap,
+.notice,
+.update-nag,
+#screen-meta,
+#screen-meta-links,
+#wpfooter {
+    display:none !important;
+}
+
+#wpcontent,
+#wpfooter {
+    margin-left:0 !important;
+}
+
+#wpbody-content {
+    padding:0 !important;
+}
+
+.wrap {
+    margin:0 auto !important;
+    max-width:800px;
+    background:#fff;
+    padding:40px;
+}
+
+</style>
                 <div class="wrap">
                     <?php
 
@@ -90,25 +120,18 @@ $business_address = get_option('nguk_business_address');
                         </tr>
 
                         <tr>
-                            <th>Pounds</th>
-                            <td>£<?php echo number_format($transaction->pounds_amount, 2); ?></td>
-                        </tr>
 
-                        <tr>
-                            <th>Profit</th>
-                            <td style="color:green;">
-                                £<?php echo number_format($transaction->profit, 2); ?>
-                            </td>
-                        </tr>
+    <th>Pounds</th>
+
+    <td>
+        £<?php echo number_format($transaction->naira_amount / $transaction->buy_rate, 2); ?>
+    </td>
+
+</tr>
 
                         <tr>
                             <th>Buy Rate</th>
                             <td><?php echo number_format($transaction->buy_rate, 2); ?></td>
-                        </tr>
-
-                        <tr>
-                            <th>Sell Rate</th>
-                            <td><?php echo number_format($transaction->sell_rate, 2); ?></td>
                         </tr>
 
                         <tr>
@@ -699,7 +722,7 @@ if ($transactions) {
             </td>
 
             <td>
-                £<?php echo number_format($transaction->pounds_amount, 2); ?>
+                £<?php echo number_format($transaction->naira_amount / $transaction->buy_rate, 2); ?> 
             </td>
 
             <td style="color:green;">
