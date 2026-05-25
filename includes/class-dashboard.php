@@ -166,7 +166,43 @@ $business_address = get_option('nguk_business_address');
                 return;
             }
         }
+/*
+=========================================
+SAVE BENEFICIARY
+=========================================
+*/
 
+if (isset($_POST['save_beneficiary'])) {
+
+    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+    $wpdb->insert(
+
+        $beneficiaries_table,
+
+        array(
+
+            'customer_id' => intval($_POST['customer_id']),
+
+            'beneficiary_name' => sanitize_text_field($_POST['beneficiary_name']),
+
+            'bank_name' => sanitize_text_field($_POST['bank_name']),
+
+            'account_name' => sanitize_text_field($_POST['account_name']),
+
+            'account_number' => sanitize_text_field($_POST['account_number']),
+
+            'sort_code' => sanitize_text_field($_POST['sort_code']),
+
+            'notes' => sanitize_textarea_field($_POST['beneficiary_notes'])
+
+        )
+
+    );
+
+    echo '<div class="updated"><p>Beneficiary saved successfully.</p></div>';
+
+}
         /* =========================
            VIEW CUSTOMER
         ========================== */
@@ -262,7 +298,93 @@ $business_address = get_option('nguk_business_address');
                         </tr>
 
                     </table>
+<hr style="margin:40px 0;">
 
+<h2>Add Beneficiary</h2>
+
+<form method="post">
+
+<input type="hidden"
+       name="customer_id"
+       value="<?php echo $customer->id; ?>">
+
+<table class="form-table">
+
+<tr>
+    <th>Beneficiary Name</th>
+
+    <td>
+        <input type="text"
+               name="beneficiary_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Bank Name</th>
+
+    <td>
+        <input type="text"
+               name="bank_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Account Name</th>
+
+    <td>
+        <input type="text"
+               name="account_name"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Account Number</th>
+
+    <td>
+        <input type="text"
+               name="account_number"
+               class="regular-text"
+               required>
+    </td>
+</tr>
+
+<tr>
+    <th>Sort Code</th>
+
+    <td>
+        <input type="text"
+               name="sort_code"
+               class="regular-text">
+    </td>
+</tr>
+
+<tr>
+    <th>Notes</th>
+
+    <td>
+        <textarea name="beneficiary_notes"
+                  class="large-text"></textarea>
+    </td>
+</tr>
+
+</table>
+
+<p>
+
+<input type="submit"
+       name="save_beneficiary"
+       class="button button-primary"
+       value="Save Beneficiary">
+
+</p>
+
+</form>
                     <p style="margin-top:20px;">
 
                         <a href="?page=nguk-transfer"
@@ -324,6 +446,7 @@ if (isset($_POST['save_bank_account'])) {
     echo '<div class="updated"><p>Bank account saved successfully.</p></div>';
 
 }
+
         if (isset($_POST['save_transaction'])) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';

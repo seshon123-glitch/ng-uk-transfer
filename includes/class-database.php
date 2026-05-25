@@ -114,6 +114,39 @@ $bank_accounts_sql = "CREATE TABLE $bank_accounts_table (
 ) $charset_collate;";
 
 dbDelta($bank_accounts_sql);
+/*
+=========================================
+BENEFICIARIES TABLE
+=========================================
+*/
+
+$beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+$beneficiaries_sql = "CREATE TABLE $beneficiaries_table (
+
+    id mediumint(9) NOT NULL AUTO_INCREMENT,
+
+    customer_id mediumint(9) NOT NULL,
+
+    beneficiary_name varchar(255) NOT NULL,
+
+    bank_name varchar(255) NOT NULL,
+
+    account_name varchar(255) NOT NULL,
+
+    account_number varchar(255) NOT NULL,
+
+    sort_code varchar(255) NULL,
+
+    notes text NULL,
+
+    created_at datetime DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id)
+
+) $charset_collate;";
+
+dbDelta($beneficiaries_sql);
 
     }
 
