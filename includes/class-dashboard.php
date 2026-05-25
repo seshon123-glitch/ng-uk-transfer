@@ -297,6 +297,33 @@ $business_address = get_option('nguk_business_address');
 
     echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
 }
+if (isset($_POST['save_bank_account'])) {
+
+    $bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+    $wpdb->insert(
+
+        $bank_accounts_table,
+
+        array(
+
+            'account_type' => sanitize_text_field($_POST['account_type']),
+
+            'bank_name' => sanitize_text_field($_POST['bank_name']),
+
+            'account_name' => sanitize_text_field($_POST['account_name']),
+
+            'account_number' => sanitize_text_field($_POST['account_number']),
+
+            'extra_details' => sanitize_text_field($_POST['extra_details'])
+
+        )
+
+    );
+
+    echo '<div class="updated"><p>Bank account saved successfully.</p></div>';
+
+}
         if (isset($_POST['save_transaction'])) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
@@ -566,7 +593,86 @@ if (isset($_GET['delete_transaction'])) {
 
             </div>
             <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+<div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
+<h2>Register Bank Account</h2>
+
+<form method="post">
+
+<table class="form-table">
+
+<tr>
+    <th>Account Type</th>
+
+    <td>
+        <select name="account_type">
+
+            <option value="Nigeria">
+                Nigeria Bank
+            </option>
+
+            <option value="UK">
+                UK Bank
+            </option>
+
+        </select>
+    </td>
+</tr>
+
+<tr>
+    <th>Bank Name</th>
+
+    <td>
+        <input type="text"
+               name="bank_name"
+               class="regular-text">
+    </td>
+</tr>
+
+<tr>
+    <th>Account Name</th>
+
+    <td>
+        <input type="text"
+               name="account_name"
+               class="regular-text">
+    </td>
+</tr>
+
+<tr>
+    <th>Account Number</th>
+
+    <td>
+        <input type="text"
+               name="account_number"
+               class="regular-text">
+    </td>
+</tr>
+
+<tr>
+    <th>Sort Code / Extra Details</th>
+
+    <td>
+        <input type="text"
+               name="extra_details"
+               class="regular-text">
+    </td>
+</tr>
+
+</table>
+
+<p>
+
+<input type="submit"
+       name="save_bank_account"
+       class="button button-primary"
+       value="Save Bank Account">
+
+</p>
+
+</form>
+
+</div>
     <h2>Create Transaction</h2>
 
     <form method="post">
