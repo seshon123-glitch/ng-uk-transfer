@@ -572,6 +572,35 @@ if (isset($_GET['delete_transaction'])) {
     <form method="post">
 
         <table class="form-table">
+            <tr>
+
+    <th>Nigeria Bank</th>
+
+    <td>
+
+        <textarea
+            name="nigeria_bank"
+            rows="4"
+            class="large-text"></textarea>
+
+    </td>
+
+</tr>
+
+<tr>
+
+    <th>UK Bank</th>
+
+    <td>
+
+        <textarea
+            name="uk_bank"
+            rows="4"
+            class="large-text"></textarea>
+
+    </td>
+
+</tr>
 
             <tr>
 
