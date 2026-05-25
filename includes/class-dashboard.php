@@ -740,6 +740,7 @@ if ($transactions) {
             </div>
 
         </div>
+        
         <script>
 
 jQuery(document).ready(function($){
