@@ -426,6 +426,7 @@ if ($beneficiaries) {
 <th>Account Number</th>
 
 <th>Sort Code</th>
+<th>Action</th>f
 
 </tr>
 
@@ -455,6 +456,17 @@ if ($beneficiaries) {
 
 <td>
 <?php echo esc_html($beneficiary->sort_code); ?>
+</td>
+<td>
+
+<a href="?page=nguk-transfer&customer_id=<?php echo $customer->id; ?>&beneficiary_id=<?php echo $beneficiary->id; ?>"
+
+class="button button-primary">
+
+Send Money
+
+</a>
+
 </td>
 
 </tr>
@@ -1010,26 +1022,29 @@ if ($uk_accounts) {
 
                    <select id="customer_select"
         name="customer_id">
+<option value="">
+    Select Customer
+</option>
 
-                        <option value="">
-                            Select Customer
-                        </option>
+<?php
 
-                        <?php
+$selected_customer_id = isset($_GET['customer_id'])
+    ? intval($_GET['customer_id'])
+    : '';
 
-                        $customers_table = $wpdb->prefix . 'nguk_customers';
+$customers_table = $wpdb->prefix . 'nguk_customers';
 
-                        $customers = $wpdb->get_results(
-                            "SELECT * FROM $customers_table ORDER BY customer_name ASC"
-                        );
+$customers = $wpdb->get_results(
+    "SELECT * FROM $customers_table ORDER BY customer_name ASC"
+);
 
-                        if ($customers) {
+if ($customers) {
 
-                            foreach ($customers as $customer) {
+    foreach ($customers as $customer) {
+?>
 
-                                ?>
-
-                                <option value="<?php echo $customer->id; ?>">
+                               <option value="<?php echo $customer->id; ?>"
+<?php selected($selected_customer_id, $customer->id); ?>>
 
                                     <?php echo esc_html($customer->customer_name); ?>
 
