@@ -426,7 +426,7 @@ if ($beneficiaries) {
 <th>Account Number</th>
 
 <th>Sort Code</th>
-<th>Action</th>f
+<th>Action</th>
 
 </tr>
 
@@ -962,58 +962,6 @@ if ($nigeria_accounts) {
 
 </tr>
 
-<tr>
-
-<th>Select UK Bank</th>
-
-<td>
-
-<select id="uk_bank_details"
-        name="uk_bank_details"
-
-<option value="">
-Select UK Bank
-</option>
-
-<?php
-
-$uk_accounts = $wpdb->get_results(
-
-    "SELECT * FROM $bank_accounts_table
-     WHERE account_type LIKE '%UK%'
-     ORDER BY bank_name ASC"
-
-);
-
-if ($uk_accounts) {
-
-    foreach ($uk_accounts as $account) {
-
-        $details =
-            $account->bank_name . "\n" .
-            $account->account_name . "\n" .
-            $account->account_number . "\n" .
-            $account->extra_details;
-
-        ?>
-
-        <option value="<?php echo esc_attr($details); ?>">
-
-            <?php echo esc_html($account->bank_name . ' - ' . $account->account_name); ?>
-
-        </option>
-
-        <?php
-    }
-}
-
-?>
-
-</select>
-
-</td>
-
-</tr>
             <tr>
 
                 <th>Select Customer</th>
@@ -1136,6 +1084,7 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                 <td>
 
                     <input type="number"
+                    id="naira_amount"
                            name="naira_amount"
                            class="regular-text">
 
@@ -1148,10 +1097,10 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                 <th>Buy Rate</th>
 
                 <td>
-
-                    <input type="number"
-                           name="buy_rate"
-                           class="regular-text">
+<input type="number"
+       id="buy_rate"
+       name="buy_rate"
+       class="regular-text">
 
                 </td>
 
@@ -1164,12 +1113,28 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                 <td>
 
                     <input type="number"
+                    id="sell_rate"
                            name="sell_rate"
                            class="regular-text">
 
                 </td>
 
             </tr>
+            <tr>
+
+    <th>Pounds Amount</th>
+
+    <td>
+
+        <input type="number"
+               id="pounds_amount"
+               name="pounds_amount"
+               class="regular-text"
+               readonly>
+
+    </td>
+
+</tr>
 
         </table>
 
@@ -1485,9 +1450,35 @@ $('#beneficiary_select').change(function(){
     }
 
 });
+
+function calculatePounds(){
+
+    var naira =
+        parseFloat($('#naira_amount').val()) || 0;
+
+    var buyRate =
+        parseFloat($('#buy_rate').val()) || 0;
+
+    if(naira > 0 && buyRate > 0){
+
+        var pounds =
+            naira / buyRate;
+
+        $('#pounds_amount').val(
+            pounds.toFixed(2)
+        );
+
+    }
+
+}
+
+$('#naira_amount').on('keyup change', function(){
+    calculatePounds();
 });
 
-</script>
+$('#buy_rate').on('keyup change', function(){
+    calculatePounds();
+});
 
         <?php
     }
