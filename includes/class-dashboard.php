@@ -72,6 +72,15 @@ $business_address = get_option('nguk_business_address');
 
 $receipt_uk_bank_details = $transaction->uk_bank_details;
 
+$receipt_pounds_sent = 0;
+
+if (floatval($transaction->buy_rate) > 0) {
+
+    $receipt_pounds_sent =
+        floatval($transaction->naira_amount) / floatval($transaction->buy_rate);
+
+}
+
 if (empty($receipt_uk_bank_details)) {
 
     $customers_table = $wpdb->prefix . 'nguk_customers';
@@ -222,7 +231,7 @@ margin-bottom:30px;
             </td>
 
             <td>
-                #<?php echo $transaction->id; ?>
+                <?php echo esc_html('INV' . (6700 + intval($transaction->id))); ?>
             </td>
         </tr>
 
@@ -252,7 +261,7 @@ margin-bottom:30px;
             </td>
 
             <td>
-                £<?php echo number_format($transaction->pounds_amount, 2); ?>
+                £<?php echo number_format($receipt_pounds_sent, 2); ?>
             </td>
         </tr>
 
@@ -263,16 +272,6 @@ margin-bottom:30px;
 
             <td>
                 <?php echo number_format($transaction->buy_rate, 2); ?>
-            </td>
-        </tr>
-
-        <tr>
-            <td style="padding:10px 0;">
-                <strong>Sell Rate</strong>
-            </td>
-
-            <td>
-                <?php echo number_format($transaction->sell_rate, 2); ?>
             </td>
         </tr>
 
@@ -350,6 +349,42 @@ if (isset($_POST['save_beneficiary'])) {
     );
 
     echo '<div class="updated"><p>Beneficiary saved successfully.</p></div>';
+
+}
+
+/*
+=========================================
+SAVE CUSTOMER
+=========================================
+*/
+
+if (isset($_POST['save_customer'])) {
+
+    $customers_table = $wpdb->prefix . 'nguk_customers';
+
+    $wpdb->insert(
+
+        $customers_table,
+
+        array(
+
+            'customer_name' => sanitize_text_field($_POST['customer_name']),
+
+            'phone_number' => sanitize_text_field($_POST['phone_number']),
+
+            'address' => sanitize_textarea_field($_POST['address']),
+
+            'notes' => sanitize_textarea_field($_POST['notes']),
+
+            'nigeria_bank_details' => sanitize_textarea_field($_POST['nigeria_bank_details']),
+
+            'uk_bank_details' => sanitize_textarea_field($_POST['uk_bank_details'])
+
+        )
+
+    );
+
+    echo '<div class="updated"><p>Customer created successfully.</p></div>';
 
 }
         /* =========================
@@ -715,9 +750,9 @@ if (isset($_POST['save_bank_account'])) {
 
     $sell_rate = floatval($_POST['sell_rate']);
 
-    if ($sell_rate > 0) {
+    if ($buy_rate > 0) {
 
-        $pounds_amount = $naira_amount / $sell_rate;
+        $pounds_amount = $naira_amount / $buy_rate;
 
     } else {
 
@@ -947,9 +982,104 @@ if (isset($_GET['delete_transaction'])) {
 
 </div>
 
+<?php if (isset($_GET['create_customer'])) { ?>
+
+            <div id="nguk-create-customer"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+
+                <h2>Create Customer</h2>
+
+                <form method="post">
+
+                    <table class="form-table">
+
+                        <tr>
+                            <th>Customer Name</th>
+                            <td>
+                                <input type="text"
+                                       name="customer_name"
+                                       class="regular-text"
+                                       required>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Phone Number</th>
+                            <td>
+                                <input type="text"
+                                       name="phone_number"
+                                       class="regular-text"
+                                       required>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Address</th>
+                            <td>
+                                <textarea name="address"
+                                          class="large-text"></textarea>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Nigeria Bank Details</th>
+                            <td>
+                                <textarea name="nigeria_bank_details"
+                                          class="large-text"
+                                          rows="4"
+                                          required></textarea>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>UK Bank Details</th>
+                            <td>
+                                <textarea name="uk_bank_details"
+                                          class="large-text"
+                                          rows="4"
+                                          required></textarea>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Notes / Risk Assessment</th>
+                            <td>
+                                <textarea name="notes"
+                                          class="large-text"
+                                          rows="4"></textarea>
+                            </td>
+                        </tr>
+
+                    </table>
+
+                    <p>
+                        <input type="submit"
+                               name="save_customer"
+                               class="button button-primary"
+                               value="Save Customer">
+
+                        <a href="?page=nguk-transfer"
+                           class="button">
+                           Cancel
+                        </a>
+                    </p>
+
+                </form>
+
+            </div>
+
+<?php } ?>
+
             <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
                 <h2>Registered Customers</h2>
+
+                <p>
+                    <a href="?page=nguk-transfer&create_customer=1#nguk-create-customer"
+                       class="button button-primary">
+                       Create Customer
+                    </a>
+                </p>
 
                 <table class="widefat striped">
 
