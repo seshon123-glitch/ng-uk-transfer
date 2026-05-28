@@ -9,6 +9,23 @@ class NGUK_Dashboard {
 
         global $wpdb;
 
+        $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+        $beneficiary_name_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'beneficiary_name'
+            )
+        );
+
+        if (!$beneficiary_name_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $transactions_table ADD beneficiary_name varchar(255) NULL"
+            );
+
+        }
+
         /* =========================
            VIEW RECEIPT
         ========================== */
@@ -376,7 +393,7 @@ if (isset($_POST['save_customer'])) {
 
             'notes' => sanitize_textarea_field($_POST['notes']),
 
-            'nigeria_bank_details' => sanitize_textarea_field($_POST['nigeria_bank_details']),
+            'nigeria_bank_details' => '',
 
             'uk_bank_details' => sanitize_textarea_field($_POST['uk_bank_details'])
 
@@ -704,6 +721,15 @@ Send Money
 
     echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
 }
+if (isset($_POST['save_exchange_rates'])) {
+
+    update_option('nguk_buy_rate', sanitize_text_field($_POST['buy_rate']));
+
+    update_option('nguk_sell_rate', sanitize_text_field($_POST['sell_rate']));
+
+    echo '<div class="updated"><p>Exchange rates updated successfully.</p></div>';
+
+}
 if (isset($_POST['save_bank_account'])) {
 
     $bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
@@ -746,9 +772,9 @@ if (isset($_POST['save_bank_account'])) {
 
     $naira_amount = floatval($_POST['naira_amount']);
 
-    $buy_rate = floatval($_POST['buy_rate']);
+    $buy_rate = floatval(get_option('nguk_buy_rate', '2000'));
 
-    $sell_rate = floatval($_POST['sell_rate']);
+    $sell_rate = floatval(get_option('nguk_sell_rate', '1900'));
 
     if ($buy_rate > 0) {
 
@@ -818,6 +844,8 @@ if (isset($_POST['save_bank_account'])) {
 
             'customer_name' => $customer_name,
 
+            'beneficiary_name' => $beneficiary->beneficiary_name,
+
             'naira_amount' => $naira_amount,
 
             'pounds_amount' => $pounds_amount,
@@ -868,7 +896,115 @@ if (isset($_GET['delete_transaction'])) {
 
             <h1>NG-UK Money Transfer Dashboard</h1>
 
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:20px;">
+            <?php
+
+            $dashboard_buy_rate = get_option('nguk_buy_rate', '2000');
+
+            $dashboard_sell_rate = get_option('nguk_sell_rate', '1900');
+
+            ?>
+
+            <style>
+                @keyframes ngukRatePulse {
+                    0%, 100% { box-shadow:0 2px 12px rgba(0,0,0,0.08); transform:translateY(0); }
+                    50% { box-shadow:0 8px 24px rgba(34,113,177,0.25); transform:translateY(-2px); }
+                }
+
+                .nguk-rate-card {
+                    background:#fff;
+                    padding:25px;
+                    border-radius:12px;
+                    border-left:6px solid #2271b1;
+                    animation:ngukRatePulse 2.4s ease-in-out infinite;
+                }
+
+                .nguk-rate-card h2 {
+                    margin:0 0 12px;
+                    font-size:22px;
+                    font-weight:800;
+                }
+
+                .nguk-rate-card strong {
+                    display:block;
+                    font-size:42px;
+                    line-height:1.1;
+                    color:#111827;
+                }
+            </style>
+
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:20px;">
+
+                <div class="nguk-rate-card">
+                    <h2>Buy Rate</h2>
+                    <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_buy_rate), 2)); ?></strong>
+                </div>
+
+                <div class="nguk-rate-card">
+                    <h2>Sell Rate</h2>
+                    <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_sell_rate), 2)); ?></strong>
+                </div>
+
+            </div>
+
+            <p style="margin-top:15px;">
+                <a href="?page=nguk-transfer&edit_rates=1#nguk-rate-settings"
+                   class="button button-primary">
+                   Change Rates
+                </a>
+            </p>
+
+            <?php if (isset($_GET['edit_rates'])) { ?>
+
+            <div id="nguk-rate-settings"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:20px;">
+
+                <h2>Exchange Rates</h2>
+
+                <form method="post">
+                    <table class="form-table">
+                        <tr>
+                            <th>Buy Rate</th>
+                            <td>
+                                <input type="number"
+                                       name="buy_rate"
+                                       class="regular-text"
+                                       step="0.01"
+                                       value="<?php echo esc_attr($dashboard_buy_rate); ?>"
+                                       required>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Sell Rate</th>
+                            <td>
+                                <input type="number"
+                                       name="sell_rate"
+                                       class="regular-text"
+                                       step="0.01"
+                                       value="<?php echo esc_attr($dashboard_sell_rate); ?>"
+                                       required>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <p>
+                        <input type="submit"
+                               name="save_exchange_rates"
+                               class="button button-primary"
+                               value="Save Rates">
+
+                        <a href="?page=nguk-transfer"
+                           class="button">
+                           Cancel
+                        </a>
+                    </p>
+                </form>
+
+            </div>
+
+            <?php } ?>
+
+            <div style="display:none;">
 
                 <div style="background:#fff;padding:25px;border-radius:12px;">
                     <h2>Total Transactions</h2>
@@ -1022,16 +1158,6 @@ if (isset($_GET['delete_transaction'])) {
                         </tr>
 
                         <tr>
-                            <th>Nigeria Bank Details</th>
-                            <td>
-                                <textarea name="nigeria_bank_details"
-                                          class="large-text"
-                                          rows="4"
-                                          required></textarea>
-                            </td>
-                        </tr>
-
-                        <tr>
                             <th>UK Bank Details</th>
                             <td>
                                 <textarea name="uk_bank_details"
@@ -1081,6 +1207,30 @@ if (isset($_GET['delete_transaction'])) {
                     </a>
                 </p>
 
+                <form method="get"
+                      style="margin:15px 0 20px;">
+
+                    <input type="hidden"
+                           name="page"
+                           value="nguk-transfer">
+
+                    <input type="search"
+                           name="customer_search"
+                           class="regular-text"
+                           placeholder="Search customer by name or phone"
+                           value="<?php echo esc_attr(isset($_GET['customer_search']) ? sanitize_text_field($_GET['customer_search']) : ''); ?>">
+
+                    <input type="submit"
+                           class="button"
+                           value="Search">
+
+                    <a href="?page=nguk-transfer"
+                       class="button">
+                       Clear
+                    </a>
+
+                </form>
+
                 <table class="widefat striped">
 
                     <thead>
@@ -1098,13 +1248,55 @@ if (isset($_GET['delete_transaction'])) {
 
                     $customers_table = $wpdb->prefix . 'nguk_customers';
 
-                    $customers = $wpdb->get_results(
-                        "SELECT * FROM $customers_table ORDER BY id DESC"
+                    $customers_per_page = 15;
+
+                    $customer_page = isset($_GET['customer_page'])
+                        ? max(1, intval($_GET['customer_page']))
+                        : 1;
+
+                    $customer_search = isset($_GET['customer_search'])
+                        ? sanitize_text_field($_GET['customer_search'])
+                        : '';
+
+                    if (!empty($customer_search)) {
+
+                        $customer_like = '%' . $wpdb->esc_like($customer_search) . '%';
+
+                        $all_customers = $wpdb->get_results(
+                            $wpdb->prepare(
+                                "SELECT * FROM $customers_table
+                                 WHERE customer_name LIKE %s
+                                    OR phone_number LIKE %s
+                                 ORDER BY id DESC",
+                                $customer_like,
+                                $customer_like
+                            )
+                        );
+
+                    } else {
+
+                        $all_customers = $wpdb->get_results(
+                            "SELECT * FROM $customers_table ORDER BY id DESC"
+                        );
+
+                    }
+
+                    $customer_total_pages = max(
+                        1,
+                        ceil(count($all_customers) / $customers_per_page)
+                    );
+
+                    $customer_page = min($customer_page, $customer_total_pages);
+
+                    $customers = array_slice(
+                        $all_customers,
+                        ($customer_page - 1) * $customers_per_page,
+                        $customers_per_page
                     );
 
                     if ($customers) {
 
-                        $count = 1;
+                        $count = (($customer_page - 1) * $customers_per_page) + 1;
 
                         foreach ($customers as $customer) {
 
@@ -1144,6 +1336,23 @@ if (isset($_GET['delete_transaction'])) {
                     </tbody>
 
                 </table>
+
+                <?php if ($customer_total_pages > 1) { ?>
+
+                    <p style="margin-top:15px;">
+
+                        <?php for ($page_number = 1; $page_number <= $customer_total_pages; $page_number++) { ?>
+
+                            <a class="button <?php echo $page_number == $customer_page ? 'button-primary' : ''; ?>"
+                               href="?page=nguk-transfer&customer_page=<?php echo $page_number; ?><?php echo !empty($customer_search) ? '&customer_search=' . urlencode($customer_search) : ''; ?>">
+                               <?php echo $page_number; ?>
+                            </a>
+
+                        <?php } ?>
+
+                    </p>
+
+                <?php } ?>
 
             </div>
             <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
@@ -1435,7 +1644,9 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 <input type="number"
        id="buy_rate"
        name="buy_rate"
-       class="regular-text">
+       class="regular-text"
+       value="<?php echo esc_attr(get_option('nguk_buy_rate', '2000')); ?>"
+       readonly>
 
                 </td>
 
@@ -1450,7 +1661,9 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                     <input type="number"
                     id="sell_rate"
                            name="sell_rate"
-                           class="regular-text">
+                           class="regular-text"
+                           value="<?php echo esc_attr(get_option('nguk_sell_rate', '1900')); ?>"
+                           readonly>
 
                 </td>
 
@@ -1490,6 +1703,30 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 
                 <h2>Recent Transactions</h2>
 
+                <form method="get"
+                      style="margin:15px 0 20px;">
+
+                    <input type="hidden"
+                           name="page"
+                           value="nguk-transfer">
+
+                    <input type="search"
+                           name="transaction_search"
+                           class="regular-text"
+                           placeholder="Search by sender, beneficiary, or phone"
+                           value="<?php echo esc_attr(isset($_GET['transaction_search']) ? sanitize_text_field($_GET['transaction_search']) : ''); ?>">
+
+                    <input type="submit"
+                           class="button"
+                           value="Search">
+
+                    <a href="?page=nguk-transfer"
+                       class="button">
+                       Clear
+                    </a>
+
+                </form>
+
                 <table class="widefat striped">
 
                     <thead>
@@ -1509,13 +1746,71 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 
 $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
-$transactions = $wpdb->get_results(
-    "SELECT * FROM $transactions_table ORDER BY id DESC"
+$transactions_per_page = 15;
+
+$transaction_page = isset($_GET['transaction_page'])
+    ? max(1, intval($_GET['transaction_page']))
+    : 1;
+
+$transaction_search = isset($_GET['transaction_search'])
+    ? sanitize_text_field($_GET['transaction_search'])
+    : '';
+
+if (!empty($transaction_search)) {
+
+    $transaction_like = '%' . $wpdb->esc_like($transaction_search) . '%';
+
+    $customers_table = $wpdb->prefix . 'nguk_customers';
+
+    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+    $all_transactions = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT DISTINCT t.*
+             FROM $transactions_table t
+             LEFT JOIN $customers_table c
+                ON c.customer_name = t.customer_name
+             WHERE t.customer_name LIKE %s
+                OR t.beneficiary_name LIKE %s
+                OR c.phone_number LIKE %s
+                OR EXISTS (
+                    SELECT 1
+                    FROM $beneficiaries_table b
+                    WHERE b.customer_id = c.id
+                      AND b.beneficiary_name LIKE %s
+                )
+             ORDER BY t.id DESC",
+            $transaction_like,
+            $transaction_like,
+            $transaction_like,
+            $transaction_like
+        )
+    );
+
+} else {
+
+    $all_transactions = $wpdb->get_results(
+        "SELECT * FROM $transactions_table ORDER BY id DESC"
+    );
+
+}
+
+$transaction_total_pages = max(
+    1,
+    ceil(count($all_transactions) / $transactions_per_page)
+);
+
+$transaction_page = min($transaction_page, $transaction_total_pages);
+
+$transactions = array_slice(
+    $all_transactions,
+    ($transaction_page - 1) * $transactions_per_page,
+    $transactions_per_page
 );
 
 if ($transactions) {
 
-    $count = 1;
+    $count = (($transaction_page - 1) * $transactions_per_page) + 1;
 
     foreach ($transactions as $transaction) {
 
@@ -1534,7 +1829,7 @@ if ($transactions) {
             </td>
 
             <td>
-                £<?php echo number_format($transaction->naira_amount / $transaction->buy_rate, 2); ?> 
+                £<?php echo floatval($transaction->buy_rate) > 0 ? number_format($transaction->naira_amount / $transaction->buy_rate, 2) : '0.00'; ?> 
             </td>
 
             <td style="color:green;">
@@ -1573,6 +1868,23 @@ if ($transactions) {
                     </tbody>
 
                 </table>
+
+                <?php if ($transaction_total_pages > 1) { ?>
+
+                    <p style="margin-top:15px;">
+
+                        <?php for ($page_number = 1; $page_number <= $transaction_total_pages; $page_number++) { ?>
+
+                            <a class="button <?php echo $page_number == $transaction_page ? 'button-primary' : ''; ?>"
+                               href="?page=nguk-transfer&transaction_page=<?php echo $page_number; ?><?php echo !empty($transaction_search) ? '&transaction_search=' . urlencode($transaction_search) : ''; ?>">
+                               <?php echo $page_number; ?>
+                            </a>
+
+                        <?php } ?>
+
+                    </p>
+
+                <?php } ?>
 
             </div>
 

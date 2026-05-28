@@ -30,6 +30,8 @@ class NGUK_Database {
 
             customer_name varchar(255) NOT NULL,
 
+            beneficiary_name varchar(255) NULL,
+
             naira_amount float NOT NULL,
 
             pounds_amount float NOT NULL,
