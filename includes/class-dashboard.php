@@ -607,6 +607,109 @@ body {
     font-weight:700;
 }
 
+.wrap > div[style*="text-align:center"] {
+    background:linear-gradient(135deg,#0f172a,#0f766e);
+    color:#fff;
+    padding:34px 42px;
+    margin:0 !important;
+    text-align:left !important;
+}
+
+.wrap > div[style*="text-align:center"] img {
+    max-width:96px !important;
+    background:#fff;
+    padding:10px;
+    border-radius:18px;
+    box-shadow:0 12px 30px rgba(15,23,42,0.2);
+}
+
+.wrap > div[style*="text-align:center"] h1,
+.wrap > div[style*="text-align:center"] p {
+    color:#fff;
+}
+
+.wrap > div[style*="text-align:center"] h1 {
+    font-size:30px;
+    font-weight:800;
+    margin-top:14px !important;
+}
+
+.wrap > h1 {
+    margin:0 !important;
+    padding:34px 42px 8px;
+    font-size:28px;
+    font-weight:800;
+    color:#0f172a;
+}
+
+.wrap > h1:after {
+    content:'';
+    display:block;
+    width:70px;
+    height:4px;
+    background:#0f766e;
+    border-radius:999px;
+    margin-top:12px;
+}
+
+.wrap > div[style*="display:flex"] {
+    padding:0 42px;
+    gap:18px !important;
+}
+
+.wrap > div[style*="display:flex"] > div,
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] {
+    border:1px solid #e5e7eb !important;
+    border-radius:18px !important;
+    box-shadow:0 12px 32px rgba(15,23,42,0.07);
+    background:#fff;
+}
+
+.wrap > div[style*="display:flex"] h2,
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] h2 {
+    color:#0f766e !important;
+    font-size:18px;
+    font-weight:800;
+}
+
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] {
+    margin:24px 42px 0 !important;
+}
+
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] table td {
+    border-bottom:1px solid #eef2f7;
+}
+
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] table tr:last-child td {
+    border-bottom:0;
+}
+
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] table td:first-child {
+    color:#64748b;
+    text-transform:uppercase;
+    font-size:12px;
+    font-weight:800;
+}
+
+.wrap > div[style*="border:1px solid #ddd"][style*="margin-bottom:30px"] table td:last-child {
+    font-weight:800;
+    color:#0f172a;
+}
+
+.wrap > p[style*="margin-top:20px"] {
+    padding:28px 42px 36px;
+    margin:0 !important;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+}
+
+.wrap > p[style*="margin-top:20px"] .button {
+    margin-left:0 !important;
+    border-radius:10px;
+    font-weight:700;
+}
+
 @media print {
     .nguk-receipt-actions {
         display:none !important;
@@ -998,8 +1101,9 @@ margin-bottom:30px;
                                 '<meta name="viewport" content="width=device-width, initial-scale=1">' +
                                 '<title><?php echo esc_js($receipt_invoice_number); ?> Receipt</title>' +
                                 '<style>' +
+                                (document.querySelector('style') ? document.querySelector('style').innerHTML : '') +
                                 'body{margin:0;background:#e9e9e9;font-family:Arial,Helvetica,sans-serif;color:#111827;}' +
-                                '.wrap{max-width:800px;margin:30px auto;background:#fff;padding:40px;box-sizing:border-box;}' +
+                                '.wrap{max-width:940px;margin:30px auto;background:#fff;padding:0;box-sizing:border-box;border-radius:22px;overflow:hidden;}' +
                                 'table{border-collapse:collapse;width:100%;}' +
                                 'td,th{vertical-align:top;}' +
                                 '@media print{body{background:#fff}.wrap{margin:0 auto;box-shadow:none}}' +
@@ -1828,9 +1932,41 @@ if (isset($_GET['delete_transaction'])) {
                     <h1>NG-UK Money Transfer Dashboard</h1>
                     <p class="nguk-app-subtitle">Manage rates, customers, transfers, receipts, and monthly performance.</p>
                 </div>
-                <a href="?page=nguk-transfer&nguk_view=payments#nguk-create-transaction"
-                   class="button button-primary nguk-hero-action">
-                   New Transfer
+                <div class="nguk-hero-actions">
+                    <button type="button"
+                            class="nguk-account-button"
+                            id="ngukAccountButton"
+                            aria-expanded="false">
+                        <span class="dashicons dashicons-admin-users"></span>
+                        Account
+                    </button>
+
+                    <a href="?page=nguk-transfer&nguk_view=payments#nguk-create-transaction"
+                       class="button button-primary nguk-hero-action">
+                       New Transfer
+                    </a>
+                </div>
+            </div>
+
+            <div class="nguk-account-panel"
+                 id="ngukAccountPanel">
+                <h2>Account Access</h2>
+                <a href="<?php echo esc_url(wp_login_url(admin_url('admin.php?page=nguk-transfer'))); ?>"
+                   class="button button-primary">
+                   Login
+                </a>
+                <a href="<?php echo esc_url(wp_registration_url()); ?>"
+                   class="button">
+                   Register
+                </a>
+                <a href="<?php echo esc_url(wp_lostpassword_url()); ?>"
+                   class="button">
+                   Forgot Password
+                </a>
+                <a href="<?php echo esc_url(wp_logout_url(home_url('/'))); ?>"
+                   class="button"
+                   style="background:#ef4444;border-color:#ef4444;color:#fff;">
+                   Logout
                 </a>
             </div>
 
@@ -1901,6 +2037,57 @@ if (isset($_GET['delete_transaction'])) {
                     background:#22c55e !important;
                     border-color:#22c55e !important;
                     font-weight:700;
+                }
+
+                .nguk-hero-actions {
+                    display:flex;
+                    gap:10px;
+                    align-items:center;
+                    flex-wrap:wrap;
+                    justify-content:flex-end;
+                }
+
+                .nguk-account-button {
+                    min-height:38px;
+                    border:1px solid rgba(255,255,255,0.35);
+                    background:rgba(255,255,255,0.12);
+                    color:#fff;
+                    border-radius:10px;
+                    padding:7px 14px;
+                    display:inline-flex;
+                    align-items:center;
+                    gap:7px;
+                    font-weight:800;
+                    cursor:pointer;
+                }
+
+                .nguk-account-button:hover,
+                .nguk-account-button.is-active {
+                    background:#fff;
+                    color:#0f766e;
+                }
+
+                .nguk-account-panel {
+                    display:none;
+                    background:#fff;
+                    border:1px solid #e5e7eb;
+                    border-radius:16px;
+                    padding:18px;
+                    margin:14px 0;
+                    box-shadow:0 10px 28px rgba(15,23,42,0.08);
+                    align-items:center;
+                    gap:10px;
+                    flex-wrap:wrap;
+                }
+
+                .nguk-account-panel.is-open {
+                    display:flex;
+                }
+
+                .nguk-account-panel h2 {
+                    margin:0 12px 0 0;
+                    font-size:18px;
+                    min-width:150px;
                 }
 
                 .nguk-app-nav {
@@ -3320,6 +3507,19 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
         <script>
 
 jQuery(document).ready(function($){
+
+    $('#ngukAccountButton').on('click', function(){
+
+        $('#ngukAccountPanel').toggleClass('is-open');
+
+        $(this).toggleClass('is-active');
+
+        $(this).attr(
+            'aria-expanded',
+            $('#ngukAccountPanel').hasClass('is-open') ? 'true' : 'false'
+        );
+
+    });
 
     $('#upload_logo_button').click(function(e){
 
