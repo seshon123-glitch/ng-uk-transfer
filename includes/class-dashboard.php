@@ -3,6 +3,105 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!function_exists('nguk_pdf_escape')) {
+
+    function nguk_pdf_escape($text) {
+
+        $text = wp_strip_all_tags((string) $text);
+
+        $text = str_replace(array('₦', '£'), array('NGN ', 'GBP '), $text);
+
+        $text = preg_replace('/[^\x20-\x7E]/', '', $text);
+
+        return str_replace(
+            array('\\', '(', ')'),
+            array('\\\\', '\\(', '\\)'),
+            $text
+        );
+
+    }
+
+}
+
+if (!function_exists('nguk_build_receipt_pdf')) {
+
+    function nguk_build_receipt_pdf($lines) {
+
+        $content = "BT\n/F1 18 Tf\n50 790 Td\n";
+
+        $first_line = true;
+
+        foreach ($lines as $line) {
+
+            $wrapped_lines = explode(
+                "\n",
+                wordwrap((string) $line, 82, "\n", true)
+            );
+
+            foreach ($wrapped_lines as $wrapped_line) {
+
+                if ($first_line) {
+
+                    $content .= '(' . nguk_pdf_escape($wrapped_line) . ") Tj\n";
+
+                    $content .= "/F1 11 Tf\n14 TL\n";
+
+                    $first_line = false;
+
+                } else {
+
+                    $content .= "T*\n(" . nguk_pdf_escape($wrapped_line) . ") Tj\n";
+
+                }
+
+            }
+
+        }
+
+        $content .= "ET";
+
+        $objects = array(
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length " . strlen($content) . " >>\nstream\n" . $content . "\nendstream\nendobj\n"
+        );
+
+        $pdf = "%PDF-1.4\n";
+
+        $offsets = array(0);
+
+        foreach ($objects as $object) {
+
+            $offsets[] = strlen($pdf);
+
+            $pdf .= $object;
+
+        }
+
+        $xref_offset = strlen($pdf);
+
+        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
+
+        $pdf .= "0000000000 65535 f \n";
+
+        for ($index = 1; $index < count($offsets); $index++) {
+
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$index]);
+
+        }
+
+        $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 1 0 R >>\n";
+
+        $pdf .= "startxref\n" . $xref_offset . "\n%%EOF";
+
+        return $pdf;
+
+    }
+
+}
+
 class NGUK_Dashboard {
 
     public function dashboard_page() {
@@ -29,6 +128,135 @@ class NGUK_Dashboard {
         /* =========================
            VIEW RECEIPT
         ========================== */
+
+        if (isset($_GET['download_receipt'])) {
+
+            $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+            $transaction_id = intval($_GET['download_receipt']);
+
+            $transaction = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $transactions_table WHERE id = %d",
+                    $transaction_id
+                )
+            );
+
+            if (!$transaction) {
+
+                wp_die('Receipt not found.');
+
+            }
+
+            $business_name = get_option('nguk_business_name');
+
+            $business_phone = get_option('nguk_business_phone');
+
+            $business_email = get_option('nguk_business_email');
+
+            $business_address = get_option('nguk_business_address');
+
+            $receipt_uk_bank_details = $transaction->uk_bank_details;
+
+            $receipt_pounds_sent = 0;
+
+            if (floatval($transaction->buy_rate) > 0) {
+
+                $receipt_pounds_sent =
+                    floatval($transaction->naira_amount) / floatval($transaction->buy_rate);
+
+            }
+
+            if (empty($receipt_uk_bank_details)) {
+
+                $customers_table = $wpdb->prefix . 'nguk_customers';
+
+                $receipt_customer = $wpdb->get_row(
+                    $wpdb->prepare(
+                        "SELECT * FROM $customers_table WHERE customer_name = %s ORDER BY id DESC LIMIT 1",
+                        $transaction->customer_name
+                    )
+                );
+
+                if ($receipt_customer) {
+
+                    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+                    $receipt_beneficiaries = $wpdb->get_results(
+                        $wpdb->prepare(
+                            "SELECT * FROM $beneficiaries_table WHERE customer_id = %d",
+                            $receipt_customer->id
+                        )
+                    );
+
+                    if (count($receipt_beneficiaries) === 1) {
+
+                        $receipt_beneficiary = $receipt_beneficiaries[0];
+
+                        $receipt_uk_bank_details = implode(
+                            "\n",
+                            array_filter(
+                                array(
+                                    $receipt_beneficiary->bank_name,
+                                    $receipt_beneficiary->account_name,
+                                    $receipt_beneficiary->account_number,
+                                    $receipt_beneficiary->sort_code
+                                )
+                            )
+                        );
+
+                    } elseif (!empty($receipt_customer->uk_bank_details)) {
+
+                        $receipt_uk_bank_details = $receipt_customer->uk_bank_details;
+
+                    }
+
+                }
+
+            }
+
+            $receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+
+            $pdf_lines = array(
+                'Transaction Receipt',
+                '',
+                $business_name,
+                $business_phone,
+                $business_email,
+                $business_address,
+                '',
+                'Invoice: ' . $receipt_invoice_number,
+                'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
+                'Customer: ' . $transaction->customer_name,
+                'Beneficiary: ' . $transaction->beneficiary_name,
+                '',
+                'Nigeria Bank Details:',
+                $transaction->nigeria_bank_details,
+                '',
+                'Receiver Bank Details:',
+                $receipt_uk_bank_details,
+                '',
+                'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
+                'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
+                'Buy Rate: ' . number_format($transaction->buy_rate, 2),
+                'Status: ' . $transaction->status
+            );
+
+            $pdf = nguk_build_receipt_pdf($pdf_lines);
+
+            nocache_headers();
+
+            header('Content-Type: application/pdf');
+
+            header('Content-Disposition: attachment; filename="' . $receipt_invoice_number . '-receipt.pdf"');
+
+            header('Content-Length: ' . strlen($pdf));
+
+            echo $pdf;
+
+            exit;
+
+        }
 
         if (isset($_GET['view_receipt'])) {
 
@@ -146,6 +374,37 @@ if (empty($receipt_uk_bank_details)) {
 
 }
 
+$receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+
+$receipt_url = admin_url(
+    'admin.php?page=nguk-transfer&view_receipt=' . intval($transaction->id)
+);
+
+$receipt_share_text = implode(
+    "\n",
+    array(
+        'Transaction Receipt',
+        'Invoice: ' . $receipt_invoice_number,
+        'Business: ' . $business_name,
+        'Customer: ' . $transaction->customer_name,
+        'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
+        'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
+        'Buy Rate: ' . number_format($transaction->buy_rate, 2),
+        'Status: ' . $transaction->status,
+        '',
+        'Receiver Bank Details:',
+        $receipt_uk_bank_details,
+        '',
+        'Receipt Link: ' . $receipt_url
+    )
+);
+
+$whatsapp_receipt_url = 'https://wa.me/?text=' . rawurlencode($receipt_share_text);
+
+$email_receipt_url = 'mailto:?subject=' . rawurlencode(
+    'Receipt ' . $receipt_invoice_number . ' - ' . $business_name
+) . '&body=' . rawurlencode($receipt_share_text);
+
 ?>
 
 <div style="text-align:center;margin-bottom:25px;">
@@ -248,7 +507,7 @@ margin-bottom:30px;
             </td>
 
             <td>
-                <?php echo esc_html('INV' . (6700 + intval($transaction->id))); ?>
+                <?php echo esc_html($receipt_invoice_number); ?>
             </td>
         </tr>
 
@@ -314,6 +573,32 @@ margin-bottom:30px;
                             Print Receipt
 
                         </button>
+
+                        <a href="<?php echo esc_url($whatsapp_receipt_url); ?>"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="button"
+                           style="background:#25D366;border-color:#25D366;color:#fff;margin-left:8px;">
+
+                           Share on WhatsApp
+
+                        </a>
+
+                        <a href="<?php echo esc_url($email_receipt_url); ?>"
+                           class="button"
+                           style="margin-left:8px;">
+
+                           Email Receipt
+
+                        </a>
+
+                        <a href="?page=nguk-transfer&download_receipt=<?php echo intval($transaction->id); ?>"
+                           class="button"
+                           style="margin-left:8px;">
+
+                            Download Receipt
+
+                        </a>
 
                         <a href="?page=nguk-transfer"
                            class="button">
@@ -780,7 +1065,7 @@ if (isset($_POST['save_bank_account'])) {
 
         array(
 
-            'account_type' => sanitize_text_field($_POST['account_type']),
+            'account_type' => 'Nigeria',
 
             'bank_name' => sanitize_text_field($_POST['bank_name']),
 
@@ -795,6 +1080,25 @@ if (isset($_POST['save_bank_account'])) {
     );
 
     echo '<div class="updated"><p>Bank account saved successfully.</p></div>';
+
+}
+if (isset($_GET['delete_bank_account'])) {
+
+    $bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+    $bank_account_id = intval($_GET['delete_bank_account']);
+
+    $wpdb->delete(
+
+        $bank_accounts_table,
+
+        array(
+            'id' => $bank_account_id
+        )
+
+    );
+
+    echo '<div class="updated"><p>Bank account deleted successfully.</p></div>';
 
 }
 
@@ -876,6 +1180,112 @@ if (isset($_POST['save_bank_account'])) {
         )
     );
 
+    if (!isset($_POST['confirm_transaction'])) {
+
+        ?>
+
+        <div class="wrap">
+
+            <h1>Confirm Transaction</h1>
+
+            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:25px;max-width:900px;">
+
+                <h2>Transaction Preview</h2>
+
+                <table class="widefat striped">
+
+                    <tbody>
+
+                        <tr>
+                            <th>Customer</th>
+                            <td><?php echo esc_html($customer_name); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Beneficiary</th>
+                            <td><?php echo esc_html($beneficiary->beneficiary_name); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Nigeria Bank</th>
+                            <td><?php echo nl2br(esc_html($nigeria_bank)); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Receiver Bank Details</th>
+                            <td><?php echo nl2br(esc_html($uk_bank)); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Naira Paid</th>
+                            <td>₦<?php echo number_format($naira_amount, 2); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Pounds Sent</th>
+                            <td>£<?php echo number_format($pounds_amount, 2); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Buy Rate</th>
+                            <td><?php echo number_format($buy_rate, 2); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>Status</th>
+                            <td>Pending</td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+                <form method="post"
+                      style="margin-top:20px;">
+
+                    <input type="hidden"
+                           name="customer_id"
+                           value="<?php echo intval($customer_id); ?>">
+
+                    <input type="hidden"
+                           name="beneficiary_id"
+                           value="<?php echo intval($beneficiary_id); ?>">
+
+                    <input type="hidden"
+                           name="nigeria_bank_details"
+                           value="<?php echo esc_attr($nigeria_bank); ?>">
+
+                    <input type="hidden"
+                           name="naira_amount"
+                           value="<?php echo esc_attr($naira_amount); ?>">
+
+                    <input type="hidden"
+                           name="confirm_transaction"
+                           value="1">
+
+                    <input type="submit"
+                           name="save_transaction"
+                           class="button button-primary"
+                           value="Confirm and Submit Transaction">
+
+                    <button type="button"
+                            onclick="history.back();"
+                            class="button">
+                        Back to Edit
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+        <?php
+
+        return;
+
+    }
+
     $wpdb->insert(
 
         $transactions_table,
@@ -904,7 +1314,7 @@ if (isset($_POST['save_bank_account'])) {
         )
 
     );
-    echo '<div class="updated"><p>Transaction created successfully.</p></div>';
+    echo '<div class="updated"><p>Transaction has been successfully submitted.</p></div>';
 
     }
 
@@ -1517,17 +1927,16 @@ if (isset($_GET['delete_transaction'])) {
     <th>Account Type</th>
 
     <td>
-        <select name="account_type">
+        <select name="account_type" disabled>
 
             <option value="Nigeria">
                 Nigeria Bank
             </option>
 
-            <option value="UK">
-                UK Bank
-            </option>
-
         </select>
+        <input type="hidden"
+               name="account_type"
+               value="Nigeria">
     </td>
 </tr>
 
@@ -1583,6 +1992,75 @@ if (isset($_GET['delete_transaction'])) {
 </p>
 
 </form>
+
+<hr style="margin:30px 0;">
+
+<h2>Registered Nigeria Bank Accounts</h2>
+
+<?php
+
+$bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
+
+$registered_nigeria_accounts = $wpdb->get_results(
+
+    "SELECT * FROM $bank_accounts_table
+     WHERE account_type LIKE '%Nigeria%'
+     ORDER BY bank_name ASC"
+
+);
+
+if ($registered_nigeria_accounts) {
+
+?>
+
+<table class="widefat striped">
+
+    <thead>
+
+        <tr>
+            <th>Bank Name</th>
+            <th>Account Name</th>
+            <th>Account Number</th>
+            <th>Sort Code / Extra Details</th>
+            <th>Action</th>
+        </tr>
+
+    </thead>
+
+    <tbody>
+
+        <?php foreach ($registered_nigeria_accounts as $account) { ?>
+
+            <tr>
+                <td><?php echo esc_html($account->bank_name); ?></td>
+                <td><?php echo esc_html($account->account_name); ?></td>
+                <td><?php echo esc_html($account->account_number); ?></td>
+                <td><?php echo esc_html($account->extra_details); ?></td>
+                <td>
+                    <a href="?page=nguk-transfer&delete_bank_account=<?php echo intval($account->id); ?>"
+                       class="button"
+                       onclick="return confirm('Are you sure you want to delete this bank account?');"
+                       style="background:red;color:white;border-color:red;">
+                       Delete
+                    </a>
+                </td>
+            </tr>
+
+        <?php } ?>
+
+    </tbody>
+
+</table>
+
+<?php
+
+} else {
+
+    echo '<p>No Nigeria bank accounts registered yet.</p>';
+
+}
+
+?>
 
 </div>
     <h2>Create Transaction</h2>
@@ -2101,6 +2579,25 @@ $monthly_turnovers = $wpdb->get_results(
 
 );
 
+$monthly_per_page = 15;
+
+$monthly_page = isset($_GET['monthly_page'])
+    ? max(1, intval($_GET['monthly_page']))
+    : 1;
+
+$monthly_total_pages = max(
+    1,
+    ceil(count($monthly_turnovers) / $monthly_per_page)
+);
+
+$monthly_page = min($monthly_page, $monthly_total_pages);
+
+$monthly_turnovers_page = array_slice(
+    $monthly_turnovers,
+    ($monthly_page - 1) * $monthly_per_page,
+    $monthly_per_page
+);
+
 ?>
 
 <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
@@ -2121,6 +2618,8 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
 
             <tr>
 
+                <th>No.</th>
+
                 <th>Month</th>
 
                 <th>Total Transactions</th>
@@ -2139,13 +2638,19 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
 
             <?php
 
-            if ($monthly_turnovers) {
+            if ($monthly_turnovers_page) {
 
-                foreach ($monthly_turnovers as $turnover) {
+                $monthly_count = (($monthly_page - 1) * $monthly_per_page) + 1;
+
+                foreach ($monthly_turnovers_page as $turnover) {
 
                     ?>
 
                  <tr style="height:60px;">
+
+                        <td>
+                            <?php echo $monthly_count++; ?>
+                        </td>
 
                         <td>
                             <?php echo esc_html($turnover->month_year); ?>
@@ -2178,7 +2683,7 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
 
                 <tr>
 
-                    <td colspan="5">
+                    <td colspan="6">
 
                         No monthly turnover data found.
 
@@ -2194,6 +2699,23 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
         </tbody>
 
     </table>
+
+    <?php if ($monthly_total_pages > 1) { ?>
+
+        <p style="margin-top:15px;">
+
+            <?php for ($page_number = 1; $page_number <= $monthly_total_pages; $page_number++) { ?>
+
+                <a class="button <?php echo $page_number == $monthly_page ? 'button-primary' : ''; ?>"
+                   href="?page=nguk-transfer&monthly_page=<?php echo $page_number; ?>">
+                   <?php echo $page_number; ?>
+                </a>
+
+            <?php } ?>
+
+        </p>
+
+    <?php } ?>
 
 </div>
         <script>
