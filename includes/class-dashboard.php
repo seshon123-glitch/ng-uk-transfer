@@ -70,6 +70,56 @@ $business_email = get_option('nguk_business_email');
 
 $business_address = get_option('nguk_business_address');
 
+$receipt_uk_bank_details = $transaction->uk_bank_details;
+
+if (empty($receipt_uk_bank_details)) {
+
+    $customers_table = $wpdb->prefix . 'nguk_customers';
+
+    $receipt_customer = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT * FROM $customers_table WHERE customer_name = %s ORDER BY id DESC LIMIT 1",
+            $transaction->customer_name
+        )
+    );
+
+    if ($receipt_customer) {
+
+        $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+        $receipt_beneficiaries = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $beneficiaries_table WHERE customer_id = %d",
+                $receipt_customer->id
+            )
+        );
+
+        if (count($receipt_beneficiaries) === 1) {
+
+            $receipt_beneficiary = $receipt_beneficiaries[0];
+
+            $receipt_uk_bank_details = implode(
+                "\n",
+                array_filter(
+                    array(
+                        $receipt_beneficiary->bank_name,
+                        $receipt_beneficiary->account_name,
+                        $receipt_beneficiary->account_number,
+                        $receipt_beneficiary->sort_code
+                    )
+                )
+            );
+
+        } elseif (!empty($receipt_customer->uk_bank_details)) {
+
+            $receipt_uk_bank_details = $receipt_customer->uk_bank_details;
+
+        }
+
+    }
+
+}
+
 ?>
 
 <div style="text-align:center;margin-bottom:25px;">
@@ -99,47 +149,146 @@ $business_address = get_option('nguk_business_address');
 
 </div>
 
-                    <h1>Transaction Receipt</h1>
+  <h1 style="margin-bottom:30px;">
+    Transaction Receipt
+</h1>
 
-                    <table class="widefat striped" style="max-width:800px;">
-<tr>
-    <th>Date</th>
+<div style="
+display:flex;
+justify-content:space-between;
+gap:20px;
+margin-bottom:30px;
+">
 
-    <td>
-        <?php echo date('d M Y h:i A'); ?>
-    </td>
-</tr>
-                        <tr>
-                            <th>Customer</th>
-                            <td><?php echo esc_html($transaction->customer_name); ?></td>
-                        </tr>
+    <div style="
+    width:48%;
+    border:1px solid #ddd;
+    padding:20px;
+    border-radius:10px;
+    ">
 
-                        <tr>
-                            <th>Naira Paid</th>
-                            <td>₦<?php echo number_format($transaction->naira_amount, 2); ?></td>
-                        </tr>
+        <h2 style="margin-top:0;color:#2271b1;">
+            Sender Details
+        </h2>
 
-                        <tr>
+        <p>
+            <strong>Customer:</strong><br>
+            <?php echo esc_html($transaction->customer_name); ?>
+        </p>
 
-    <th>Pounds</th>
+        <p>
+            <strong>Nigeria Bank:</strong><br>
+       <?php echo nl2br(esc_html($transaction->nigeria_bank_details)); ?>
+        </p>
 
-    <td>
-        £<?php echo number_format($transaction->naira_amount / $transaction->buy_rate, 2); ?>
-    </td>
+    </div>
 
-</tr>
+    <div style="
+    width:48%;
+    border:1px solid #ddd;
+    padding:20px;
+    border-radius:10px;
+    ">
 
-                        <tr>
-                            <th>Buy Rate</th>
-                            <td><?php echo number_format($transaction->buy_rate, 2); ?></td>
-                        </tr>
+        <h2 style="margin-top:0;color:#2271b1;">
+            Receiver Details
+        </h2>
 
-                        <tr>
-                            <th>Status</th>
-                            <td><?php echo esc_html($transaction->status); ?></td>
-                        </tr>
+        <p>
+            <strong>Beneficiary Bank:</strong><br>
+         <?php echo nl2br(esc_html($receipt_uk_bank_details)); ?>
+        </p>
 
-                    </table>
+    </div>
+
+</div>
+
+<div style="
+border:1px solid #ddd;
+padding:20px;
+border-radius:10px;
+margin-bottom:30px;
+">
+
+    <h2 style="margin-top:0;color:#2271b1;">
+        Transaction Details
+    </h2>
+
+    <table style="width:100%;">
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Transaction ID</strong>
+            </td>
+
+            <td>
+                #<?php echo $transaction->id; ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Date</strong>
+            </td>
+
+            <td>
+                <?php echo date('d M Y h:i A'); ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Naira Paid</strong>
+            </td>
+
+            <td>
+                ₦<?php echo number_format($transaction->naira_amount, 2); ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Pounds Sent</strong>
+            </td>
+
+            <td>
+                £<?php echo number_format($transaction->pounds_amount, 2); ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Buy Rate</strong>
+            </td>
+
+            <td>
+                <?php echo number_format($transaction->buy_rate, 2); ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Sell Rate</strong>
+            </td>
+
+            <td>
+                <?php echo number_format($transaction->sell_rate, 2); ?>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px 0;">
+                <strong>Status</strong>
+            </td>
+
+            <td style="color:green;font-weight:bold;">
+                <?php echo esc_html($transaction->status); ?>
+            </td>
+        </tr>
+
+    </table>
+
+</div>
 
                     <p style="margin-top:20px;">
 
@@ -552,7 +701,13 @@ if (isset($_POST['save_bank_account'])) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
-    $customer_id = intval($_POST['customer_id']);
+    $customer_id = isset($_POST['customer_id'])
+        ? intval($_POST['customer_id'])
+        : 0;
+
+    $beneficiary_id = isset($_POST['beneficiary_id'])
+        ? intval($_POST['beneficiary_id'])
+        : 0;
 
     $naira_amount = floatval($_POST['naira_amount']);
 
@@ -569,19 +724,56 @@ if (isset($_POST['save_bank_account'])) {
         $pounds_amount = 0;
 
     }
- $profit = abs(
-    ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate)
-);
+    if ($sell_rate > 0 && $buy_rate > 0) {
+
+        $profit = abs(
+            ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate)
+        );
+
+    } else {
+
+        $profit = 0;
+
+    }
     $customers_table = $wpdb->prefix . 'nguk_customers';
 
     $customer = $wpdb->get_row(
-        "SELECT * FROM $customers_table WHERE id = $customer_id"
+        $wpdb->prepare(
+            "SELECT * FROM $customers_table WHERE id = %d",
+            $customer_id
+        )
     );
 
-    $customer_name = $customer ? $customer->customer_name : '';
+    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+    $beneficiary = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT * FROM $beneficiaries_table WHERE id = %d AND customer_id = %d",
+            $beneficiary_id,
+            $customer_id
+        )
+    );
+
+    if (!$customer || !$beneficiary) {
+
+        echo '<div class="notice notice-error"><p>Please select a valid customer and one of that customer\'s beneficiaries.</p></div>';
+
+    } else {
+
+    $customer_name = $customer->customer_name;
     $nigeria_bank = sanitize_textarea_field($_POST['nigeria_bank_details']);
 
-$uk_bank = sanitize_textarea_field($_POST['uk_bank_details']);
+    $uk_bank = implode(
+        "\n",
+        array_filter(
+            array(
+                $beneficiary->bank_name,
+                $beneficiary->account_name,
+                $beneficiary->account_number,
+                $beneficiary->sort_code
+            )
+        )
+    );
 
     $wpdb->insert(
 
@@ -610,6 +802,8 @@ $uk_bank = sanitize_textarea_field($_POST['uk_bank_details']);
 
     );
     echo '<div class="updated"><p>Transaction created successfully.</p></div>';
+
+    }
 
 }
 if (isset($_GET['delete_transaction'])) {
@@ -969,7 +1163,8 @@ if ($nigeria_accounts) {
                 <td>
 
                    <select id="customer_select"
-        name="customer_id">
+        name="customer_id"
+        required>
 <option value="">
     Select Customer
 </option>
@@ -1017,7 +1212,8 @@ if ($customers) {
 
 <select id="beneficiary_select"
         name="beneficiary_id"
-        style="width:100%;">
+        style="width:100%;"
+        required>
 
 <option value="">
 Select Beneficiary
@@ -1036,6 +1232,10 @@ $all_beneficiaries = $wpdb->get_results(
 
 if ($all_beneficiaries) {
 
+    $selected_beneficiary_id = isset($_GET['beneficiary_id'])
+        ? intval($_GET['beneficiary_id'])
+        : '';
+
     foreach ($all_beneficiaries as $beneficiary) {
 
         ?>
@@ -1052,6 +1252,8 @@ data-account-name="<?php echo esc_attr($beneficiary->account_name); ?>"
 data-account-number="<?php echo esc_attr($beneficiary->account_number); ?>"
 
 data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
+
+<?php selected($selected_beneficiary_id, $beneficiary->id); ?>
 
 >
 
@@ -1072,6 +1274,9 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 ?>
 
 </select>
+<input type="hidden"
+       id="uk_bank_details"
+       name="uk_bank_details">
 
 </td>
 
@@ -1390,66 +1595,91 @@ jQuery(document).ready(function($){
         });
 
     });
+    var beneficiaryOptions =
+        $('#beneficiary_select option').clone();
+
+    function buildBeneficiaryDetails(option){
+
+        var bank =
+            option.data('bank');
+
+        if(!bank){
+
+            return '';
+
+        }
+
+        return [
+            bank,
+            option.data('account-name'),
+            option.data('account-number'),
+            option.data('sort-code')
+        ].filter(Boolean).join("\n");
+
+    }
+
+    function populateBeneficiaries(customerId, selectedBeneficiaryId){
+
+        var beneficiarySelect =
+            $('#beneficiary_select');
+
+        beneficiarySelect.empty();
+
+        beneficiaryOptions.each(function(){
+
+            var option =
+                $(this).clone();
+
+            if(
+                option.val() == '' ||
+                String(option.data('customer-id')) === String(customerId)
+            ){
+
+                beneficiarySelect.append(option);
+
+            }
+
+        });
+
+        beneficiarySelect.val(selectedBeneficiaryId || '');
+
+        if(!beneficiarySelect.val()){
+
+            $('#uk_bank_details').val('');
+
+        } else {
+
+            $('#uk_bank_details').val(
+                buildBeneficiaryDetails(
+                    beneficiarySelect.find(':selected')
+                )
+            );
+
+        }
+
+    }
+
     $('#customer_select').change(function(){
 
-    var customerId = $(this).val();
-
-    $('#beneficiary_select option').each(function(){
-
-        var beneficiaryCustomer =
-            $(this).data('customer-id');
-
-        if(
-            $(this).val() == ''
-        ){
-            $(this).show();
-        }
-
-        else if(
-            beneficiaryCustomer == customerId
-        ){
-            $(this).show();
-        }
-
-        else{
-            $(this).hide();
-        }
+        populateBeneficiaries($(this).val(), '');
 
     });
 
-    $('#beneficiary_select').val('');
-
-});
 $('#beneficiary_select').change(function(){
 
     var selected =
         $(this).find(':selected');
 
-    var bank =
-        selected.data('bank');
-
-    var accountName =
-        selected.data('account-name');
-
-    var accountNumber =
-        selected.data('account-number');
-
-    var sortCode =
-        selected.data('sort-code');
-
-    if(bank){
-
-        var details =
-            bank + "\n" +
-            accountName + "\n" +
-            accountNumber + "\n" +
-            sortCode;
-
-        $('#uk_bank_details').val(details);
-
-    }
+    $('#uk_bank_details').val(
+        buildBeneficiaryDetails(selected)
+    );
 
 });
+
+populateBeneficiaries(
+    $('#customer_select').val(),
+    $('#beneficiary_select').val()
+);
 
 function calculatePounds(){
 
@@ -1479,6 +1709,10 @@ $('#naira_amount').on('keyup change', function(){
 $('#buy_rate').on('keyup change', function(){
     calculatePounds();
 });
+
+});
+
+</script>
 
         <?php
     }
