@@ -869,6 +869,53 @@ if (isset($_POST['save_bank_account'])) {
     }
 
 }
+if (isset($_POST['update_transaction_status'])) {
+
+    $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+    $transaction_id = isset($_POST['transaction_id'])
+        ? intval($_POST['transaction_id'])
+        : 0;
+
+    $new_status = isset($_POST['transaction_status'])
+        ? sanitize_text_field($_POST['transaction_status'])
+        : '';
+
+    $allowed_statuses = array(
+        'Pending',
+        'Paid',
+        'Returned',
+        'Cancelled'
+    );
+
+    if (
+        $transaction_id > 0 &&
+        in_array($new_status, $allowed_statuses, true)
+    ) {
+
+        $wpdb->update(
+
+            $transactions_table,
+
+            array(
+                'status' => $new_status
+            ),
+
+            array(
+                'id' => $transaction_id
+            )
+
+        );
+
+        echo '<div class="updated"><p>Transaction status updated successfully.</p></div>';
+
+    } else {
+
+        echo '<div class="notice notice-error"><p>Please select a valid transaction status.</p></div>';
+
+    }
+
+}
 if (isset($_GET['delete_transaction'])) {
 
     global $wpdb;
@@ -1736,6 +1783,8 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                             <th>Naira Paid</th>
                             <th>Pounds</th>
                             <th>Profit</th>
+                            <th>Status</th>
+                            <th>Change Status</th>
                             <th>Receipt</th>
                         </tr>
                     </thead>
@@ -1836,6 +1885,41 @@ if ($transactions) {
 
                 £<?php echo number_format($transaction->profit, 2); ?>
 
+            </td>
+
+            <td>
+                <strong><?php echo esc_html($transaction->status); ?></strong>
+            </td>
+
+            <td>
+                <form method="post"
+                      style="display:flex;gap:6px;align-items:center;margin:0;">
+
+                    <input type="hidden"
+                           name="transaction_id"
+                           value="<?php echo intval($transaction->id); ?>">
+
+                    <select name="transaction_status">
+                        <option value="Pending" <?php selected($transaction->status, 'Pending'); ?>>
+                            Pending
+                        </option>
+                        <option value="Paid" <?php selected($transaction->status, 'Paid'); ?>>
+                            Paid
+                        </option>
+                        <option value="Returned" <?php selected($transaction->status, 'Returned'); ?>>
+                            Returned
+                        </option>
+                        <option value="Cancelled" <?php selected($transaction->status, 'Cancelled'); ?>>
+                            Cancelled
+                        </option>
+                    </select>
+
+                    <input type="submit"
+                           name="update_transaction_status"
+                           class="button"
+                           value="Update">
+
+                </form>
             </td>
 
             <td>
