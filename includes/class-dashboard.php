@@ -391,7 +391,7 @@ if (isset($_POST['save_customer'])) {
 
             'address' => sanitize_textarea_field($_POST['address']),
 
-            'notes' => sanitize_textarea_field($_POST['notes']),
+            'notes' => '',
 
             'nigeria_bank_details' => '',
 
@@ -402,6 +402,46 @@ if (isset($_POST['save_customer'])) {
     );
 
     echo '<div class="updated"><p>Customer created successfully.</p></div>';
+
+}
+
+/*
+=========================================
+UPDATE CUSTOMER NOTES
+=========================================
+*/
+
+if (isset($_POST['update_customer_notes'])) {
+
+    $customers_table = $wpdb->prefix . 'nguk_customers';
+
+    $customer_id = isset($_POST['customer_id'])
+        ? intval($_POST['customer_id'])
+        : 0;
+
+    $customer_notes = isset($_POST['customer_notes'])
+        ? sanitize_textarea_field($_POST['customer_notes'])
+        : '';
+
+    if ($customer_id > 0) {
+
+        $wpdb->update(
+
+            $customers_table,
+
+            array(
+                'notes' => $customer_notes
+            ),
+
+            array(
+                'id' => $customer_id
+            )
+
+        );
+
+        echo '<div class="updated"><p>Customer note / risk assessment updated successfully.</p></div>';
+
+    }
 
 }
         /* =========================
@@ -1214,15 +1254,6 @@ if (isset($_GET['delete_transaction'])) {
                             </td>
                         </tr>
 
-                        <tr>
-                            <th>Notes / Risk Assessment</th>
-                            <td>
-                                <textarea name="notes"
-                                          class="large-text"
-                                          rows="4"></textarea>
-                            </td>
-                        </tr>
-
                     </table>
 
                     <p>
@@ -1246,6 +1277,46 @@ if (isset($_GET['delete_transaction'])) {
             <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
                 <h2>Registered Customers</h2>
+
+                <?php
+
+                $customers_table = $wpdb->prefix . 'nguk_customers';
+
+                if (isset($_GET['view_customer_note'])) {
+
+                    $note_customer_id = intval($_GET['view_customer_note']);
+
+                    $note_customer = $wpdb->get_row(
+                        $wpdb->prepare(
+                            "SELECT customer_name, notes FROM $customers_table WHERE id = %d",
+                            $note_customer_id
+                        )
+                    );
+
+                    if ($note_customer) {
+
+                        ?>
+
+                        <div id="customer-note-view"
+                             style="background:#f6f7f7;border-left:4px solid #2271b1;padding:15px;margin:15px 0;">
+
+                            <h3 style="margin-top:0;">
+                                Note / Risk Assessment for <?php echo esc_html($note_customer->customer_name); ?>
+                            </h3>
+
+                            <p style="white-space:pre-wrap;margin-bottom:0;">
+                                <?php echo !empty($note_customer->notes) ? esc_html($note_customer->notes) : 'No note / risk assessment has been saved yet.'; ?>
+                            </p>
+
+                        </div>
+
+                        <?php
+
+                    }
+
+                }
+
+                ?>
 
                 <p>
                     <a href="?page=nguk-transfer&create_customer=1#nguk-create-customer"
@@ -1285,6 +1356,8 @@ if (isset($_GET['delete_transaction'])) {
                             <th>No.</th>
                             <th>Customer Name</th>
                             <th>Phone</th>
+                            <th>Note / Risk Assessment</th>
+                            <th>View Note</th>
                             <th>Profile</th>
                         </tr>
                     </thead>
@@ -1359,6 +1432,35 @@ if (isset($_GET['delete_transaction'])) {
 
                                 <td>
                                     <?php echo esc_html($customer->phone_number); ?>
+                                </td>
+
+                                <td>
+                                    <form method="post"
+                                          style="margin:0;">
+
+                                        <input type="hidden"
+                                               name="customer_id"
+                                               value="<?php echo intval($customer->id); ?>">
+
+                                        <textarea name="customer_notes"
+                                                  rows="3"
+                                                  style="width:100%;min-width:260px;"><?php echo esc_textarea($customer->notes); ?></textarea>
+
+                                        <p style="margin:6px 0 0;">
+                                            <input type="submit"
+                                                   name="update_customer_notes"
+                                                   class="button"
+                                                   value="Save Note">
+                                        </p>
+
+                                    </form>
+                                </td>
+
+                                <td>
+                                    <a href="?page=nguk-transfer&view_customer_note=<?php echo intval($customer->id); ?>#customer-note-view"
+                                       class="button">
+                                       View
+                                    </a>
                                 </td>
 
                                 <td>
