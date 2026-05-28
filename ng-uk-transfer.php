@@ -57,6 +57,23 @@ function nguk_load_dashboard() {
 }
 
 add_action('admin_menu', 'nguk_load_dashboard');
+add_action('admin_init', function() {
+
+    if (
+        isset($_GET['page']) &&
+        $_GET['page'] === 'nguk-transfer' &&
+        isset($_GET['download_receipt'])
+    ) {
+
+        NGUK_Dashboard::download_receipt_pdf();
+
+    }
+
+});
+add_action(
+    'admin_post_nguk_download_receipt',
+    array('NGUK_Dashboard', 'download_receipt_pdf')
+);
 add_action('admin_enqueue_scripts', function() {
     wp_enqueue_media();
 });

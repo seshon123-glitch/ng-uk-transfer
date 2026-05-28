@@ -104,6 +104,154 @@ if (!function_exists('nguk_build_receipt_pdf')) {
 
 class NGUK_Dashboard {
 
+    public static function download_receipt_pdf() {
+
+        if (
+            !isset($_GET['download_receipt']) &&
+            !isset($_GET['receipt_id'])
+        ) {
+
+            return;
+
+        }
+
+        global $wpdb;
+
+        $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+        $transaction_id = isset($_GET['receipt_id'])
+            ? intval($_GET['receipt_id'])
+            : intval($_GET['download_receipt']);
+
+        $transaction = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM $transactions_table WHERE id = %d",
+                $transaction_id
+            )
+        );
+
+        if (!$transaction) {
+
+            wp_die('Receipt not found.');
+
+        }
+
+        $business_name = get_option('nguk_business_name');
+
+        $business_phone = get_option('nguk_business_phone');
+
+        $business_email = get_option('nguk_business_email');
+
+        $business_address = get_option('nguk_business_address');
+
+        $receipt_uk_bank_details = $transaction->uk_bank_details;
+
+        $receipt_pounds_sent = 0;
+
+        if (floatval($transaction->buy_rate) > 0) {
+
+            $receipt_pounds_sent =
+                floatval($transaction->naira_amount) / floatval($transaction->buy_rate);
+
+        }
+
+        if (empty($receipt_uk_bank_details)) {
+
+            $customers_table = $wpdb->prefix . 'nguk_customers';
+
+            $receipt_customer = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $customers_table WHERE customer_name = %s ORDER BY id DESC LIMIT 1",
+                    $transaction->customer_name
+                )
+            );
+
+            if ($receipt_customer) {
+
+                $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+
+                $receipt_beneficiaries = $wpdb->get_results(
+                    $wpdb->prepare(
+                        "SELECT * FROM $beneficiaries_table WHERE customer_id = %d",
+                        $receipt_customer->id
+                    )
+                );
+
+                if (count($receipt_beneficiaries) === 1) {
+
+                    $receipt_beneficiary = $receipt_beneficiaries[0];
+
+                    $receipt_uk_bank_details = implode(
+                        "\n",
+                        array_filter(
+                            array(
+                                $receipt_beneficiary->bank_name,
+                                $receipt_beneficiary->account_name,
+                                $receipt_beneficiary->account_number,
+                                $receipt_beneficiary->sort_code
+                            )
+                        )
+                    );
+
+                } elseif (!empty($receipt_customer->uk_bank_details)) {
+
+                    $receipt_uk_bank_details = $receipt_customer->uk_bank_details;
+
+                }
+
+            }
+
+        }
+
+        $receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+
+        $pdf_lines = array(
+            'Transaction Receipt',
+            '',
+            $business_name,
+            $business_phone,
+            $business_email,
+            $business_address,
+            '',
+            'Invoice: ' . $receipt_invoice_number,
+            'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
+            'Customer: ' . $transaction->customer_name,
+            'Beneficiary: ' . $transaction->beneficiary_name,
+            '',
+            'Nigeria Bank Details:',
+            $transaction->nigeria_bank_details,
+            '',
+            'Receiver Bank Details:',
+            $receipt_uk_bank_details,
+            '',
+            'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
+            'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
+            'Buy Rate: ' . number_format($transaction->buy_rate, 2),
+            'Status: ' . $transaction->status
+        );
+
+        $pdf = nguk_build_receipt_pdf($pdf_lines);
+
+        while (ob_get_level()) {
+
+            ob_end_clean();
+
+        }
+
+        nocache_headers();
+
+        header('Content-Type: application/pdf');
+
+        header('Content-Disposition: attachment; filename="' . $receipt_invoice_number . '-receipt.pdf"');
+
+        header('Content-Length: ' . strlen($pdf));
+
+        echo $pdf;
+
+        exit;
+
+    }
+
     public function dashboard_page() {
 
         global $wpdb;
@@ -296,9 +444,199 @@ class NGUK_Dashboard {
 
 .wrap {
     margin:0 auto !important;
-    max-width:800px;
+    max-width:940px;
     background:#fff;
-    padding:40px;
+    padding:0;
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:0 24px 70px rgba(15,23,42,0.16);
+}
+
+body {
+    background:#eef2f7 !important;
+}
+
+.nguk-receipt-shell {
+    padding:42px;
+}
+
+.nguk-receipt-hero {
+    background:linear-gradient(135deg,#0f172a,#0f766e);
+    color:#fff;
+    padding:34px 42px;
+    display:flex;
+    justify-content:space-between;
+    gap:28px;
+    align-items:center;
+}
+
+.nguk-receipt-brand {
+    display:flex;
+    gap:18px;
+    align-items:center;
+}
+
+.nguk-receipt-logo {
+    width:86px;
+    height:86px;
+    object-fit:contain;
+    background:#fff;
+    border-radius:18px;
+    padding:10px;
+}
+
+.nguk-receipt-hero h1,
+.nguk-receipt-hero p {
+    color:#fff;
+    margin:0;
+}
+
+.nguk-receipt-company {
+    font-size:28px;
+    font-weight:800;
+    letter-spacing:0;
+}
+
+.nguk-receipt-meta {
+    text-align:right;
+}
+
+.nguk-receipt-meta strong {
+    display:block;
+    font-size:26px;
+    margin-bottom:8px;
+}
+
+.nguk-status-pill {
+    display:inline-block;
+    padding:7px 12px;
+    border-radius:999px;
+    background:#dcfce7;
+    color:#166534;
+    font-weight:800;
+}
+
+.nguk-receipt-summary {
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:16px;
+    margin-bottom:24px;
+}
+
+.nguk-summary-card,
+.nguk-detail-card,
+.nguk-transaction-card {
+    border:1px solid #e5e7eb;
+    border-radius:16px;
+    background:#fff;
+    box-shadow:0 10px 28px rgba(15,23,42,0.06);
+}
+
+.nguk-summary-card {
+    padding:18px;
+}
+
+.nguk-summary-card span,
+.nguk-transaction-table th {
+    color:#64748b;
+    font-size:12px;
+    text-transform:uppercase;
+    font-weight:800;
+}
+
+.nguk-summary-card strong {
+    display:block;
+    margin-top:8px;
+    font-size:24px;
+    color:#0f172a;
+}
+
+.nguk-receipt-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:18px;
+    margin-bottom:24px;
+}
+
+.nguk-detail-card {
+    padding:22px;
+}
+
+.nguk-detail-card h2,
+.nguk-transaction-card h2 {
+    margin:0 0 16px;
+    color:#0f766e;
+    font-size:18px;
+}
+
+.nguk-detail-card p {
+    margin:0 0 16px;
+    line-height:1.55;
+}
+
+.nguk-transaction-card {
+    padding:22px;
+}
+
+.nguk-transaction-table {
+    width:100%;
+    border-collapse:collapse;
+}
+
+.nguk-transaction-table td,
+.nguk-transaction-table th {
+    padding:13px 0;
+    border-bottom:1px solid #eef2f7;
+    text-align:left;
+}
+
+.nguk-transaction-table td {
+    font-weight:700;
+    color:#0f172a;
+}
+
+.nguk-receipt-actions {
+    padding:0 42px 34px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+}
+
+.nguk-receipt-actions .button {
+    border-radius:10px;
+    font-weight:700;
+}
+
+@media print {
+    .nguk-receipt-actions {
+        display:none !important;
+    }
+    body {
+        background:#fff !important;
+    }
+    .wrap {
+        box-shadow:none;
+        border-radius:0;
+    }
+}
+
+@media (max-width:760px) {
+    .nguk-receipt-hero,
+    .nguk-receipt-brand {
+        display:block;
+        text-align:left;
+    }
+    .nguk-receipt-meta {
+        text-align:left;
+        margin-top:22px;
+    }
+    .nguk-receipt-shell {
+        padding:24px;
+    }
+    .nguk-receipt-summary,
+    .nguk-receipt-grid {
+        grid-template-columns:1fr;
+    }
 }
 
 </style>
@@ -404,6 +742,31 @@ $whatsapp_receipt_url = 'https://wa.me/?text=' . rawurlencode($receipt_share_tex
 $email_receipt_url = 'mailto:?subject=' . rawurlencode(
     'Receipt ' . $receipt_invoice_number . ' - ' . $business_name
 ) . '&body=' . rawurlencode($receipt_share_text);
+
+$download_receipt_lines = array(
+    'Transaction Receipt',
+    '',
+    $business_name,
+    $business_phone,
+    $business_email,
+    $business_address,
+    '',
+    'Invoice: ' . $receipt_invoice_number,
+    'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
+    'Customer: ' . $transaction->customer_name,
+    'Beneficiary: ' . $transaction->beneficiary_name,
+    '',
+    'Nigeria Bank Details:',
+    $transaction->nigeria_bank_details,
+    '',
+    'Receiver Bank Details:',
+    $receipt_uk_bank_details,
+    '',
+    'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
+    'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
+    'Buy Rate: ' . number_format($transaction->buy_rate, 2),
+    'Status: ' . $transaction->status
+);
 
 ?>
 
@@ -592,13 +955,14 @@ margin-bottom:30px;
 
                         </a>
 
-                        <a href="?page=nguk-transfer&download_receipt=<?php echo intval($transaction->id); ?>"
-                           class="button"
-                           style="margin-left:8px;">
+                        <button type="button"
+                                id="downloadReceiptButton"
+                                class="button"
+                                style="margin-left:8px;">
 
                             Download Receipt
 
-                        </a>
+                        </button>
 
                         <a href="?page=nguk-transfer"
                            class="button">
@@ -608,6 +972,73 @@ margin-bottom:30px;
                         </a>
 
                     </p>
+
+                    <script>
+                    (function(){
+
+                        var receiptFilename = <?php echo wp_json_encode($receipt_invoice_number . '-receipt.html'); ?>;
+
+                        document.getElementById('downloadReceiptButton').addEventListener('click', function(){
+
+                            var receipt = document.querySelector('.wrap').cloneNode(true);
+
+                            var actions = receipt.querySelector('p[style*="margin-top:20px"]');
+
+                            if(actions){
+
+                                actions.remove();
+
+                            }
+
+                            var html =
+                                '<!doctype html>' +
+                                '<html>' +
+                                '<head>' +
+                                '<meta charset="utf-8">' +
+                                '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+                                '<title><?php echo esc_js($receipt_invoice_number); ?> Receipt</title>' +
+                                '<style>' +
+                                'body{margin:0;background:#e9e9e9;font-family:Arial,Helvetica,sans-serif;color:#111827;}' +
+                                '.wrap{max-width:800px;margin:30px auto;background:#fff;padding:40px;box-sizing:border-box;}' +
+                                'table{border-collapse:collapse;width:100%;}' +
+                                'td,th{vertical-align:top;}' +
+                                '@media print{body{background:#fff}.wrap{margin:0 auto;box-shadow:none}}' +
+                                '</style>' +
+                                '</head>' +
+                                '<body>' +
+                                receipt.outerHTML +
+                                '</body>' +
+                                '</html>';
+
+                            var blob = new Blob(
+                                [html],
+                                { type: 'text/html' }
+                            );
+
+                            var url = URL.createObjectURL(blob);
+
+                            var link = document.createElement('a');
+
+                            link.href = url;
+
+                            link.download = receiptFilename;
+
+                            document.body.appendChild(link);
+
+                            link.click();
+
+                            document.body.removeChild(link);
+
+                            setTimeout(function(){
+
+                                URL.revokeObjectURL(url);
+
+                            }, 1000);
+
+                        });
+
+                    })();
+                    </script>
 
                 </div>
 
@@ -1391,7 +1822,26 @@ if (isset($_GET['delete_transaction'])) {
 
         <div class="wrap">
 
-            <h1>NG-UK Money Transfer Dashboard</h1>
+            <div class="nguk-app-hero">
+                <div>
+                    <p class="nguk-app-kicker">Daphkoy Operations</p>
+                    <h1>NG-UK Money Transfer Dashboard</h1>
+                    <p class="nguk-app-subtitle">Manage rates, customers, transfers, receipts, and monthly performance.</p>
+                </div>
+                <a href="?page=nguk-transfer&nguk_view=payments#nguk-create-transaction"
+                   class="button button-primary nguk-hero-action">
+                   New Transfer
+                </a>
+            </div>
+
+            <nav class="nguk-app-nav" aria-label="Dashboard sections">
+                <button type="button" class="nguk-nav-button" data-nguk-tab="overview">Overview</button>
+                <button type="button" class="nguk-nav-button" data-nguk-tab="payments">Payments</button>
+                <button type="button" class="nguk-nav-button" data-nguk-tab="customers">Customers</button>
+                <button type="button" class="nguk-nav-button" data-nguk-tab="transactions">Transactions</button>
+                <button type="button" class="nguk-nav-button" data-nguk-tab="reports">Reports</button>
+                <button type="button" class="nguk-nav-button" data-nguk-tab="settings">Settings</button>
+            </nav>
 
             <?php
 
@@ -1402,6 +1852,155 @@ if (isset($_GET['delete_transaction'])) {
             ?>
 
             <style>
+                .wrap {
+                    max-width:1360px;
+                }
+
+                .nguk-app-hero {
+                    background:linear-gradient(135deg,#10223f,#176b87);
+                    color:#fff;
+                    padding:28px;
+                    border-radius:18px;
+                    display:flex;
+                    justify-content:space-between;
+                    gap:20px;
+                    align-items:center;
+                    box-shadow:0 18px 45px rgba(15,35,66,0.22);
+                    margin-top:18px;
+                }
+
+                .nguk-app-hero h1 {
+                    color:#fff;
+                    margin:0;
+                    font-size:30px;
+                    font-weight:800;
+                    letter-spacing:0;
+                }
+
+                .nguk-app-kicker,
+                .nguk-app-subtitle {
+                    margin:0;
+                    color:#dbeafe;
+                }
+
+                .nguk-app-kicker {
+                    text-transform:uppercase;
+                    font-size:12px;
+                    font-weight:700;
+                    margin-bottom:7px;
+                }
+
+                .nguk-app-subtitle {
+                    margin-top:8px;
+                    font-size:14px;
+                }
+
+                .nguk-hero-action {
+                    min-width:130px;
+                    text-align:center;
+                    background:#22c55e !important;
+                    border-color:#22c55e !important;
+                    font-weight:700;
+                }
+
+                .nguk-app-nav {
+                    background:#fff;
+                    border:1px solid #e5e7eb;
+                    border-radius:14px;
+                    padding:8px;
+                    margin:18px 0;
+                    display:flex;
+                    flex-wrap:wrap;
+                    gap:8px;
+                    box-shadow:0 8px 24px rgba(15,23,42,0.06);
+                    position:sticky;
+                    top:42px;
+                    z-index:5;
+                }
+
+                .nguk-nav-button {
+                    border:0;
+                    background:transparent;
+                    color:#334155;
+                    padding:10px 14px;
+                    border-radius:10px;
+                    font-weight:700;
+                    cursor:pointer;
+                }
+
+                .nguk-nav-button.is-active {
+                    background:#0f766e;
+                    color:#fff;
+                    box-shadow:0 8px 18px rgba(15,118,110,0.22);
+                }
+
+                .nguk-tab-panel {
+                    display:none;
+                }
+
+                .nguk-tab-panel.is-active {
+                    display:block;
+                }
+
+                .nguk-section-card,
+                .nguk-tab-panel,
+                .wrap > div[style*="background:#fff"],
+                body.wp-admin div[style*="background:#fff"][style*="border-radius:12px"] {
+                    border-radius:16px !important;
+                    border:1px solid #e5e7eb;
+                    box-shadow:0 10px 26px rgba(15,23,42,0.06) !important;
+                }
+
+                .wrap h2 {
+                    font-size:20px;
+                    font-weight:800;
+                    color:#0f172a;
+                    margin-top:0;
+                }
+
+                .form-table th {
+                    color:#334155;
+                    font-weight:700;
+                }
+
+                .form-table input,
+                .form-table textarea,
+                .form-table select,
+                .regular-text,
+                input[type="search"],
+                select {
+                    border:1px solid #cbd5e1 !important;
+                    border-radius:10px !important;
+                    min-height:42px;
+                    padding:8px 12px;
+                    box-shadow:none !important;
+                }
+
+                .button,
+                .button-primary {
+                    border-radius:10px !important;
+                    min-height:38px;
+                    padding:4px 14px !important;
+                    font-weight:700;
+                }
+
+                .widefat {
+                    border:1px solid #e5e7eb;
+                    border-radius:14px;
+                    overflow:hidden;
+                    box-shadow:0 4px 16px rgba(15,23,42,0.04);
+                }
+
+                .widefat thead th {
+                    background:#f8fafc;
+                    color:#475569;
+                    font-weight:800;
+                }
+
+                .widefat tbody tr:nth-child(even) {
+                    background:#f8fafc;
+                }
+
                 @keyframes ngukRatePulse {
                     0%, 100% { box-shadow:0 2px 12px rgba(0,0,0,0.08); transform:translateY(0); }
                     50% { box-shadow:0 8px 24px rgba(34,113,177,0.25); transform:translateY(-2px); }
@@ -2859,6 +3458,123 @@ $('#naira_amount').on('keyup change', function(){
 $('#buy_rate').on('keyup change', function(){
     calculatePounds();
 });
+
+function ngukFindSectionByHeading(headingText){
+
+    var found = null;
+
+    $('h2').each(function(){
+
+        if($.trim($(this).text()) === headingText){
+
+            found = $(this).closest('div');
+
+            return false;
+
+        }
+
+    });
+
+    return found;
+
+}
+
+function ngukAssignPanel(section, panel){
+
+    if(section && section.length){
+
+        section.addClass('nguk-tab-panel').attr('data-nguk-panel', panel);
+
+    }
+
+}
+
+ngukAssignPanel($('.nguk-rate-card').parent(), 'overview');
+ngukAssignPanel($('a[href*="edit_rates"]').closest('p'), 'overview');
+ngukAssignPanel($('#nguk-rate-settings'), 'overview');
+ngukAssignPanel(ngukFindSectionByHeading('Business Details'), 'settings');
+ngukAssignPanel($('#nguk-create-customer'), 'customers');
+ngukAssignPanel(ngukFindSectionByHeading('Registered Customers'), 'customers');
+ngukAssignPanel(ngukFindSectionByHeading('Register Bank Account').parent(), 'payments');
+ngukAssignPanel(ngukFindSectionByHeading('Recent Transactions'), 'transactions');
+ngukAssignPanel(ngukFindSectionByHeading('Monthly Turnovers'), 'reports');
+
+var params =
+    new URLSearchParams(window.location.search);
+
+function ngukInitialPanel(){
+
+    if(params.get('nguk_view')){
+
+        return params.get('nguk_view');
+
+    }
+
+    if(
+        params.has('create_customer') ||
+        params.has('view_customer_note') ||
+        params.has('customer_search') ||
+        params.has('customer_page')
+    ){
+
+        return 'customers';
+
+    }
+
+    if(
+        params.has('transaction_search') ||
+        params.has('transaction_page')
+    ){
+
+        return 'transactions';
+
+    }
+
+    if(params.has('monthly_page')){
+
+        return 'reports';
+
+    }
+
+    if(params.has('edit_rates')){
+
+        return 'overview';
+
+    }
+
+    return 'overview';
+
+}
+
+function ngukShowPanel(panel){
+
+    $('.nguk-tab-panel').removeClass('is-active');
+
+    $('.nguk-tab-panel[data-nguk-panel="' + panel + '"]').addClass('is-active');
+
+    $('.nguk-nav-button').removeClass('is-active');
+
+    $('.nguk-nav-button[data-nguk-tab="' + panel + '"]').addClass('is-active');
+
+    try {
+
+        var currentUrl = new URL(window.location.href);
+
+        currentUrl.searchParams.set('nguk_view', panel);
+
+        window.history.replaceState({}, '', currentUrl.toString());
+
+    } catch(error) {}
+
+}
+
+$('.nguk-nav-button').on('click', function(){
+
+    ngukShowPanel($(this).data('nguk-tab'));
+
+});
+
+ngukShowPanel(ngukInitialPanel());
 
 });
 
