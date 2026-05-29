@@ -119,6 +119,8 @@ class NGUK_Dashboard {
 
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
+        $nguk_force_panel = '';
+
         $transaction_id = isset($_GET['receipt_id'])
             ? intval($_GET['receipt_id'])
             : intval($_GET['download_receipt']);
@@ -254,9 +256,34 @@ class NGUK_Dashboard {
 
     public function dashboard_page() {
 
+        if (
+            isset($_GET['ukng_view']) ||
+            isset($_GET['ukng_view_customer']) ||
+            isset($_GET['ukng_view_receipt']) ||
+            isset($_GET['ukng_receipt_id']) ||
+            isset($_GET['ukng_add_customer']) ||
+            isset($_GET['ukng_delete_transaction']) ||
+            isset($_GET['ukng_clear_outstanding']) ||
+            isset($_GET['ukng_delete_commission'])
+        ) {
+
+            if (!class_exists('UKNG_Dashboard')) {
+
+                require_once NGUK_PLUGIN_PATH . 'includes/class-ukng-dashboard.php';
+
+            }
+
+            $dashboard = new UKNG_Dashboard();
+            $dashboard->dashboard_page();
+            return;
+
+        }
+
         global $wpdb;
 
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+        $nguk_force_panel = '';
 
         $beneficiary_name_column = $wpdb->get_var(
             $wpdb->prepare(
@@ -1520,7 +1547,7 @@ if ($beneficiaries) {
 </td>
 <td>
 
-<a href="?page=nguk-transfer&customer_id=<?php echo $customer->id; ?>&beneficiary_id=<?php echo $beneficiary->id; ?>"
+<a href="?page=nguk-transfer&nguk_view=payments&customer_id=<?php echo $customer->id; ?>&beneficiary_id=<?php echo $beneficiary->id; ?>#nguk-create-transaction"
 
 class="button button-primary">
 
@@ -1586,6 +1613,11 @@ if (isset($_POST['save_exchange_rates'])) {
     update_option('nguk_buy_rate', sanitize_text_field($_POST['buy_rate']));
 
     update_option('nguk_sell_rate', sanitize_text_field($_POST['sell_rate']));
+
+    update_option(
+        'nguk_transfer_fee',
+        isset($_POST['transfer_fee']) ? sanitize_text_field($_POST['transfer_fee']) : '0'
+    );
 
     echo '<div class="updated"><p>Exchange rates updated successfully.</p></div>';
 
@@ -1821,7 +1853,7 @@ if (isset($_GET['delete_bank_account'])) {
 
     }
 
-    $wpdb->insert(
+    $transaction_inserted = $wpdb->insert(
 
         $transactions_table,
 
@@ -1842,14 +1874,31 @@ if (isset($_GET['delete_bank_account'])) {
             'sell_rate' => $sell_rate,
             'nigeria_bank_details' => $nigeria_bank,
 
-'uk_bank_details' => $uk_bank,
+            'uk_bank_details' => $uk_bank,
 
-            'status' => 'Pending'
+            'status' => 'Pending',
+
+            'tracking_code' => NGUK_Database::generate_tracking_code(),
+
+            'status_updated_at' => current_time('mysql')
 
         )
 
     );
-    echo '<div class="updated"><p>Transaction has been successfully submitted.</p></div>';
+
+    if ($transaction_inserted === false) {
+
+        echo '<div class="notice notice-error"><p>Transaction could not be created. ' . esc_html($wpdb->last_error) . '</p></div>';
+
+        $nguk_force_panel = 'payments';
+
+    } else {
+
+        $nguk_force_panel = 'transactions';
+
+        echo '<div class="updated"><p>Transaction has been successfully submitted.</p></div>';
+
+    }
 
     }
 
@@ -1868,6 +1917,9 @@ if (isset($_POST['update_transaction_status'])) {
 
     $allowed_statuses = array(
         'Pending',
+        'Payment Received',
+        'Processing',
+        'Paid Out',
         'Paid',
         'Returned',
         'Cancelled'
@@ -1883,7 +1935,8 @@ if (isset($_POST['update_transaction_status'])) {
             $transactions_table,
 
             array(
-                'status' => $new_status
+                'status' => $new_status,
+                'status_updated_at' => current_time('mysql')
             ),
 
             array(
@@ -1922,6 +1975,71 @@ if (isset($_GET['delete_transaction'])) {
     echo '<div class="updated"><p>Transaction deleted successfully.</p></div>';
 
 }
+
+$nguk_current_panel = isset($_GET['nguk_view'])
+    ? sanitize_key($_GET['nguk_view'])
+    : '';
+
+if (!empty($nguk_force_panel)) {
+
+    $nguk_current_panel = $nguk_force_panel;
+
+} elseif (
+    isset($_GET['customer_id']) ||
+    isset($_GET['beneficiary_id'])
+) {
+
+    $nguk_current_panel = 'payments';
+
+} elseif (
+    isset($_GET['transaction_search']) ||
+    isset($_GET['transaction_page']) ||
+    isset($_GET['transaction_created'])
+) {
+
+    $nguk_current_panel = 'transactions';
+
+} elseif (
+    isset($_GET['create_customer']) ||
+    isset($_GET['view_customer_note']) ||
+    isset($_GET['customer_search']) ||
+    isset($_GET['customer_page'])
+) {
+
+    $nguk_current_panel = 'customers';
+
+} elseif (isset($_GET['monthly_page'])) {
+
+    $nguk_current_panel = 'reports';
+
+} elseif (empty($nguk_current_panel)) {
+
+    $nguk_current_panel = 'overview';
+
+}
+
+$nguk_allowed_panels = array(
+    'overview',
+    'payments',
+    'customers',
+    'transactions',
+    'reports',
+    'settings'
+);
+
+if (!in_array($nguk_current_panel, $nguk_allowed_panels, true)) {
+
+    $nguk_current_panel = 'overview';
+
+}
+
+$nguk_panel_class = function($panel) use ($nguk_current_panel) {
+
+    return $panel === $nguk_current_panel
+        ? 'nguk-tab-panel is-active'
+        : 'nguk-tab-panel';
+
+};
         ?>
 
         <div class="wrap">
@@ -1945,6 +2063,18 @@ if (isset($_GET['delete_transaction'])) {
                        class="button button-primary nguk-hero-action">
                        New Transfer
                     </a>
+
+                    <form id="ngukUkngSwitchForm"
+                          method="get"
+                          action="<?php echo esc_url(admin_url('admin.php')); ?>"
+                          style="margin:0;">
+                        <input type="hidden" name="page" value="nguk-transfer">
+                        <input type="hidden" name="ukng_view" value="overview">
+                        <button type="submit"
+                                class="button nguk-ukng-switch-button">
+                            UK to Nigeria
+                        </button>
+                    </form>
                 </div>
             </div>
 
@@ -1971,19 +2101,217 @@ if (isset($_GET['delete_transaction'])) {
             </div>
 
             <nav class="nguk-app-nav" aria-label="Dashboard sections">
-                <button type="button" class="nguk-nav-button" data-nguk-tab="overview">Overview</button>
-                <button type="button" class="nguk-nav-button" data-nguk-tab="payments">Payments</button>
-                <button type="button" class="nguk-nav-button" data-nguk-tab="customers">Customers</button>
-                <button type="button" class="nguk-nav-button" data-nguk-tab="transactions">Transactions</button>
-                <button type="button" class="nguk-nav-button" data-nguk-tab="reports">Reports</button>
-                <button type="button" class="nguk-nav-button" data-nguk-tab="settings">Settings</button>
+                <a href="?page=nguk-transfer&nguk_view=overview" class="nguk-nav-button" data-nguk-tab="overview" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('overview');return false;}">Overview</a>
+                <a href="?page=nguk-transfer&nguk_view=payments" class="nguk-nav-button" data-nguk-tab="payments" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('payments');return false;}">Payments</a>
+                <a href="?page=nguk-transfer&nguk_view=customers" class="nguk-nav-button" data-nguk-tab="customers" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('customers');return false;}">Customers</a>
+                <a href="?page=nguk-transfer&nguk_view=transactions" class="nguk-nav-button" data-nguk-tab="transactions" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('transactions');return false;}">Transactions</a>
+                <a href="?page=nguk-transfer&nguk_view=reports" class="nguk-nav-button" data-nguk-tab="reports" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('reports');return false;}">Reports</a>
+                <a href="?page=nguk-transfer&nguk_view=settings" class="nguk-nav-button" data-nguk-tab="settings" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('settings');return false;}">Settings</a>
             </nav>
+
+            <script>
+            (function(){
+                var panelsReady = false;
+
+                function closestPanel(element){
+                    while(element && element !== document.body){
+                        if(element.tagName && element.tagName.toLowerCase() === 'div'){
+                            return element;
+                        }
+                        element = element.parentNode;
+                    }
+                    return null;
+                }
+
+                function findPanelByHeading(headingText){
+                    var headings = document.querySelectorAll('h2');
+                    for(var index = 0; index < headings.length; index++){
+                        if(headings[index].textContent.replace(/\s+/g, ' ').trim() === headingText){
+                            return closestPanel(headings[index]);
+                        }
+                    }
+                    return null;
+                }
+
+                function addPanel(element, panel){
+                    if(!element){
+                        return;
+                    }
+                    element.classList.add('nguk-tab-panel');
+                    element.setAttribute('data-nguk-panel', panel);
+                }
+
+                function addPanelByHeading(headingText, panel, useParent){
+                    var element = findPanelByHeading(headingText);
+                    if(element && useParent && element.parentElement){
+                        element = element.parentElement;
+                    }
+                    addPanel(element, panel);
+                }
+
+                function setupPanels(){
+                    panelsReady = true;
+
+                    var rateCard = document.querySelector('.nguk-rate-card');
+                    if(rateCard && rateCard.parentElement){
+                        addPanel(rateCard.parentElement, 'overview');
+                    }
+
+                    var rateLink = document.querySelector('a[href*="edit_rates"]');
+                    if(rateLink && rateLink.parentElement){
+                        addPanel(rateLink.parentElement, 'overview');
+                    }
+
+                    addPanel(document.getElementById('nguk-rate-settings'), 'overview');
+                    addPanelByHeading('Business Details', 'settings', false);
+                    addPanel(document.getElementById('nguk-create-customer'), 'customers');
+                    addPanelByHeading('Registered Customers', 'customers', false);
+                    addPanelByHeading('Register Bank Account', 'payments', true);
+                    addPanel(document.getElementById('nguk-create-transaction'), 'payments');
+                    addPanelByHeading('Recent Transactions', 'transactions', false);
+                    addPanelByHeading('Monthly Turnovers', 'reports', false);
+                }
+
+                window.ngukShowDashboardPanel = function(panel){
+                    panel = panel || 'overview';
+
+                    if(!panelsReady || !document.querySelectorAll('.nguk-tab-panel').length){
+                        setupPanels();
+                    }
+
+                    var panels = document.querySelectorAll('.nguk-tab-panel');
+                    var activePanels = document.querySelectorAll('.nguk-tab-panel[data-nguk-panel="' + panel + '"]');
+
+                    if(!activePanels.length){
+                        panel = 'overview';
+                        activePanels = document.querySelectorAll('.nguk-tab-panel[data-nguk-panel="overview"]');
+                    }
+
+                    for(var index = 0; index < panels.length; index++){
+                        panels[index].classList.remove('is-active');
+                    }
+
+                    for(var activeIndex = 0; activeIndex < activePanels.length; activeIndex++){
+                        activePanels[activeIndex].classList.add('is-active');
+
+                        var parentPanel = activePanels[activeIndex].parentElement;
+
+                        while(parentPanel && parentPanel !== document.body){
+
+                            if(parentPanel.classList && parentPanel.classList.contains('nguk-tab-panel')){
+
+                                parentPanel.classList.add('is-active');
+
+                            }
+
+                            parentPanel = parentPanel.parentElement;
+
+                        }
+                    }
+
+                    var buttons = document.querySelectorAll('.nguk-nav-button');
+                    for(var buttonIndex = 0; buttonIndex < buttons.length; buttonIndex++){
+                        buttons[buttonIndex].classList.remove('is-active');
+                    }
+
+                    var activeButton = document.querySelector('.nguk-nav-button[data-nguk-tab="' + panel + '"]');
+                    if(activeButton){
+                        activeButton.classList.add('is-active');
+                    }
+
+                    try {
+                        var currentUrl = new URL(window.location.href);
+                        currentUrl.searchParams.set('nguk_view', panel);
+                        window.history.replaceState({}, '', currentUrl.toString());
+                    } catch(error) {}
+
+                    if(window.location.hash){
+                        try {
+                            var target = document.querySelector(window.location.hash);
+                            if(target && target.offsetParent !== null){
+                                target.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start'
+                                });
+                            }
+                        } catch(error) {}
+                    }
+                };
+
+                window.ngukInitialDashboardPanel = function(){
+                    var forcedPanel = '<?php echo esc_js($nguk_force_panel); ?>';
+                    var params = null;
+
+                    try {
+                        params = new URLSearchParams(window.location.search);
+                    } catch(error) {}
+
+                    if(forcedPanel){
+                        return forcedPanel;
+                    }
+                    if(params && params.get('nguk_view')){
+                        return params.get('nguk_view');
+                    }
+                    if(params && (
+                        params.has('customer_id') ||
+                        params.has('beneficiary_id')
+                    )){
+                        return 'payments';
+                    }
+                    if(params && (
+                        params.has('transaction_search') ||
+                        params.has('transaction_page') ||
+                        params.has('transaction_created')
+                    )){
+                        return 'transactions';
+                    }
+                    if(params && (
+                        params.has('create_customer') ||
+                        params.has('view_customer_note') ||
+                        params.has('customer_search') ||
+                        params.has('customer_page')
+                    )){
+                        return 'customers';
+                    }
+                    if(params && params.has('monthly_page')){
+                        return 'reports';
+                    }
+                    return 'overview';
+                };
+
+                if(document.readyState === 'loading'){
+                    document.addEventListener('DOMContentLoaded', function(){
+                        setupPanels();
+                        window.ngukShowDashboardPanel(window.ngukInitialDashboardPanel());
+                        var buttons = document.querySelectorAll('.nguk-nav-button');
+                        for(var index = 0; index < buttons.length; index++){
+                            buttons[index].addEventListener('click', function(event){
+                                event.preventDefault();
+                                window.ngukShowDashboardPanel(this.getAttribute('data-nguk-tab'));
+                            });
+                        }
+                    });
+                } else {
+                    setupPanels();
+                    window.ngukShowDashboardPanel(window.ngukInitialDashboardPanel());
+                    var buttons = document.querySelectorAll('.nguk-nav-button');
+                    for(var index = 0; index < buttons.length; index++){
+                        buttons[index].addEventListener('click', function(event){
+                            event.preventDefault();
+                            window.ngukShowDashboardPanel(this.getAttribute('data-nguk-tab'));
+                        });
+                    }
+                }
+            })();
+            </script>
 
             <?php
 
             $dashboard_buy_rate = get_option('nguk_buy_rate', '2000');
 
             $dashboard_sell_rate = get_option('nguk_sell_rate', '1900');
+
+            $dashboard_transfer_fee = get_option('nguk_transfer_fee', '0');
 
             ?>
 
@@ -2037,6 +2365,26 @@ if (isset($_GET['delete_transaction'])) {
                     background:#22c55e !important;
                     border-color:#22c55e !important;
                     font-weight:700;
+                }
+
+                .nguk-ukng-switch-button {
+                    min-height:48px;
+                    min-width:180px;
+                    padding:10px 22px !important;
+                    border-radius:12px !important;
+                    background:#f59e0b !important;
+                    border-color:#f59e0b !important;
+                    color:#111827 !important;
+                    font-size:15px !important;
+                    font-weight:900 !important;
+                    text-align:center;
+                    box-shadow:0 12px 28px rgba(245,158,11,0.32) !important;
+                }
+
+                .nguk-ukng-switch-button:hover {
+                    background:#fbbf24 !important;
+                    border-color:#fbbf24 !important;
+                    color:#111827 !important;
                 }
 
                 .nguk-hero-actions {
@@ -2113,6 +2461,8 @@ if (isset($_GET['delete_transaction'])) {
                     border-radius:10px;
                     font-weight:700;
                     cursor:pointer;
+                    display:inline-block;
+                    text-decoration:none;
                 }
 
                 .nguk-nav-button.is-active {
@@ -2215,7 +2565,9 @@ if (isset($_GET['delete_transaction'])) {
                 }
             </style>
 
-            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:20px;">
+            <div class="<?php echo esc_attr($nguk_panel_class('overview')); ?>"
+                 data-nguk-panel="overview"
+                 style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:20px;">
 
                 <div class="nguk-rate-card">
                     <h2>Buy Rate</h2>
@@ -2229,7 +2581,9 @@ if (isset($_GET['delete_transaction'])) {
 
             </div>
 
-            <p style="margin-top:15px;">
+            <p class="<?php echo esc_attr($nguk_panel_class('overview')); ?>"
+               data-nguk-panel="overview"
+               style="margin-top:15px;">
                 <a href="?page=nguk-transfer&edit_rates=1#nguk-rate-settings"
                    class="button button-primary">
                    Change Rates
@@ -2239,6 +2593,8 @@ if (isset($_GET['delete_transaction'])) {
             <?php if (isset($_GET['edit_rates'])) { ?>
 
             <div id="nguk-rate-settings"
+                 class="<?php echo esc_attr($nguk_panel_class('overview')); ?>"
+                 data-nguk-panel="overview"
                  style="background:#fff;padding:25px;border-radius:12px;margin-top:20px;">
 
                 <h2>Exchange Rates</h2>
@@ -2266,6 +2622,18 @@ if (isset($_GET['delete_transaction'])) {
                                        step="0.01"
                                        value="<?php echo esc_attr($dashboard_sell_rate); ?>"
                                        required>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>Transfer Fee (NGN)</th>
+                            <td>
+                                <input type="number"
+                                       name="transfer_fee"
+                                       class="regular-text"
+                                       step="0.01"
+                                       value="<?php echo esc_attr($dashboard_transfer_fee); ?>">
+                                <p class="description">Used by the public transfer calculator.</p>
                             </td>
                         </tr>
                     </table>
@@ -2310,7 +2678,9 @@ if (isset($_GET['delete_transaction'])) {
                 </div>
 
             </div>
-            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+            <div class="<?php echo esc_attr($nguk_panel_class('settings')); ?>"
+                 data-nguk-panel="settings"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
     <h2>Business Details</h2>
 
@@ -2404,6 +2774,8 @@ if (isset($_GET['delete_transaction'])) {
 <?php if (isset($_GET['create_customer'])) { ?>
 
             <div id="nguk-create-customer"
+                 class="<?php echo esc_attr($nguk_panel_class('customers')); ?>"
+                 data-nguk-panel="customers"
                  style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
                 <h2>Create Customer</h2>
@@ -2470,7 +2842,9 @@ if (isset($_GET['delete_transaction'])) {
 
 <?php } ?>
 
-            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+            <div class="<?php echo esc_attr($nguk_panel_class('customers')); ?>"
+                 data-nguk-panel="customers"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
                 <h2>Registered Customers</h2>
 
@@ -2700,7 +3074,9 @@ if (isset($_GET['delete_transaction'])) {
                 <?php } ?>
 
             </div>
-            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+            <div class="<?php echo esc_attr($nguk_panel_class('payments')); ?>"
+                 data-nguk-panel="payments"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
 <h2>Register Bank Account</h2>
@@ -2849,6 +3225,14 @@ if ($registered_nigeria_accounts) {
 ?>
 
 </div>
+
+</div>
+
+<div id="nguk-create-transaction"
+     class="<?php echo esc_attr($nguk_panel_class('payments')); ?>"
+     data-nguk-panel="payments"
+     style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+
     <h2>Create Transaction</h2>
 
     <form method="post">
@@ -3112,7 +3496,9 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 
 </div>
 
-            <div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+            <div class="<?php echo esc_attr($nguk_panel_class('transactions')); ?>"
+                 data-nguk-panel="transactions"
+                 style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
                 <h2>Recent Transactions</h2>
 
@@ -3140,6 +3526,21 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 
                 </form>
 
+                <?php
+
+                $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+                $nguk_transaction_count = $wpdb->get_var(
+                    "SELECT COUNT(*) FROM $transactions_table"
+                );
+
+                ?>
+
+                <p>
+                    <strong>Total saved transactions:</strong>
+                    <?php echo esc_html(number_format(intval($nguk_transaction_count))); ?>
+                </p>
+
                 <table class="widefat striped">
 
                     <thead>
@@ -3158,8 +3559,6 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                     <tbody>
 
                        <?php
-
-$transactions_table = $wpdb->prefix . 'nguk_transactions';
 
 $transactions_per_page = 15;
 
@@ -3210,6 +3609,14 @@ if (!empty($transaction_search)) {
 
 }
 
+$transaction_query_error = $wpdb->last_error;
+
+if (!is_array($all_transactions)) {
+
+    $all_transactions = array();
+
+}
+
 $transaction_total_pages = max(
     1,
     ceil(count($all_transactions) / $transactions_per_page)
@@ -3222,6 +3629,21 @@ $transactions = array_slice(
     ($transaction_page - 1) * $transactions_per_page,
     $transactions_per_page
 );
+
+?>
+
+<?php if (!empty($transaction_query_error)) { ?>
+
+    <tr>
+        <td colspan="8">
+            <strong>Transaction table error:</strong>
+            <?php echo esc_html($transaction_query_error); ?>
+        </td>
+    </tr>
+
+<?php } ?>
+
+<?php
 
 if ($transactions) {
 
@@ -3269,6 +3691,15 @@ if ($transactions) {
                         <option value="Pending" <?php selected($transaction->status, 'Pending'); ?>>
                             Pending
                         </option>
+                        <option value="Payment Received" <?php selected($transaction->status, 'Payment Received'); ?>>
+                            Payment Received
+                        </option>
+                        <option value="Processing" <?php selected($transaction->status, 'Processing'); ?>>
+                            Processing
+                        </option>
+                        <option value="Paid Out" <?php selected($transaction->status, 'Paid Out'); ?>>
+                            Paid Out
+                        </option>
                         <option value="Paid" <?php selected($transaction->status, 'Paid'); ?>>
                             Paid
                         </option>
@@ -3311,6 +3742,17 @@ if ($transactions) {
 
         <?php
     }
+} else {
+
+    ?>
+
+    <tr>
+        <td colspan="8">
+            No transactions found yet.
+        </td>
+    </tr>
+
+    <?php
 }
 
 ?>
@@ -3386,7 +3828,9 @@ $monthly_turnovers_page = array_slice(
 
 ?>
 
-<div style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
+<div class="<?php echo esc_attr($nguk_panel_class('reports')); ?>"
+     data-nguk-panel="reports"
+     style="background:#fff;padding:25px;border-radius:12px;margin-top:30px;">
 
     <h2>Monthly Turnovers</h2>
 
@@ -3659,123 +4103,6 @@ $('#buy_rate').on('keyup change', function(){
     calculatePounds();
 });
 
-function ngukFindSectionByHeading(headingText){
-
-    var found = null;
-
-    $('h2').each(function(){
-
-        if($.trim($(this).text()) === headingText){
-
-            found = $(this).closest('div');
-
-            return false;
-
-        }
-
-    });
-
-    return found;
-
-}
-
-function ngukAssignPanel(section, panel){
-
-    if(section && section.length){
-
-        section.addClass('nguk-tab-panel').attr('data-nguk-panel', panel);
-
-    }
-
-}
-
-ngukAssignPanel($('.nguk-rate-card').parent(), 'overview');
-ngukAssignPanel($('a[href*="edit_rates"]').closest('p'), 'overview');
-ngukAssignPanel($('#nguk-rate-settings'), 'overview');
-ngukAssignPanel(ngukFindSectionByHeading('Business Details'), 'settings');
-ngukAssignPanel($('#nguk-create-customer'), 'customers');
-ngukAssignPanel(ngukFindSectionByHeading('Registered Customers'), 'customers');
-ngukAssignPanel(ngukFindSectionByHeading('Register Bank Account').parent(), 'payments');
-ngukAssignPanel(ngukFindSectionByHeading('Recent Transactions'), 'transactions');
-ngukAssignPanel(ngukFindSectionByHeading('Monthly Turnovers'), 'reports');
-
-var params =
-    new URLSearchParams(window.location.search);
-
-function ngukInitialPanel(){
-
-    if(params.get('nguk_view')){
-
-        return params.get('nguk_view');
-
-    }
-
-    if(
-        params.has('create_customer') ||
-        params.has('view_customer_note') ||
-        params.has('customer_search') ||
-        params.has('customer_page')
-    ){
-
-        return 'customers';
-
-    }
-
-    if(
-        params.has('transaction_search') ||
-        params.has('transaction_page')
-    ){
-
-        return 'transactions';
-
-    }
-
-    if(params.has('monthly_page')){
-
-        return 'reports';
-
-    }
-
-    if(params.has('edit_rates')){
-
-        return 'overview';
-
-    }
-
-    return 'overview';
-
-}
-
-function ngukShowPanel(panel){
-
-    $('.nguk-tab-panel').removeClass('is-active');
-
-    $('.nguk-tab-panel[data-nguk-panel="' + panel + '"]').addClass('is-active');
-
-    $('.nguk-nav-button').removeClass('is-active');
-
-    $('.nguk-nav-button[data-nguk-tab="' + panel + '"]').addClass('is-active');
-
-    try {
-
-        var currentUrl = new URL(window.location.href);
-
-        currentUrl.searchParams.set('nguk_view', panel);
-
-        window.history.replaceState({}, '', currentUrl.toString());
-
-    } catch(error) {}
-
-}
-
-$('.nguk-nav-button').on('click', function(){
-
-    ngukShowPanel($(this).data('nguk-tab'));
-
-});
-
-ngukShowPanel(ngukInitialPanel());
-
 });
 
 </script>
@@ -3783,3 +4110,6 @@ ngukShowPanel(ngukInitialPanel());
         <?php
     }
 }
+
+
+

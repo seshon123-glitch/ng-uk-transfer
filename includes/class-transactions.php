@@ -71,7 +71,11 @@ class NGUK_Transactions {
 
                     'uk_bank_details' => $customer->uk_bank_details,
 
-                    'status' => 'Pending'
+                    'status' => 'Pending',
+
+                    'tracking_code' => NGUK_Database::generate_tracking_code(),
+
+                    'status_updated_at' => current_time('mysql')
 
                 )
 
