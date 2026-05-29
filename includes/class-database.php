@@ -347,6 +347,7 @@ self::create_ukng_tables($charset_collate);
             beneficiary_bank_details text NOT NULL,
             status varchar(50) DEFAULT 'Pending',
             outstanding_status varchar(20) DEFAULT 'Outstanding',
+            amount_paid float DEFAULT 0,
             tracking_code varchar(50) NULL,
             status_updated_at datetime NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -369,6 +370,25 @@ self::create_ukng_tables($charset_collate);
             );
 
         }
+
+        $amount_paid_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'amount_paid'
+            )
+        );
+
+        if (!$amount_paid_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $transactions_table ADD amount_paid float DEFAULT 0"
+            );
+
+        }
+
+        $wpdb->query(
+            "UPDATE $transactions_table SET amount_paid = 0 WHERE amount_paid IS NULL"
+        );
 
         $wpdb->query(
             "UPDATE $transactions_table SET outstanding_status = 'Outstanding' WHERE outstanding_status IS NULL OR outstanding_status = ''"

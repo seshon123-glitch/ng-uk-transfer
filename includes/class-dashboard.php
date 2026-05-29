@@ -165,6 +165,14 @@ class NGUK_Dashboard {
 
     }
 
+    private static function qr_code_url($lines) {
+
+        $data = implode("\n", $lines);
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . rawurlencode($data);
+
+    }
+
     public static function download_receipt_pdf() {
 
         if (
@@ -934,6 +942,15 @@ $email_receipt_url = 'mailto:?subject=' . rawurlencode(
     'Receipt ' . $receipt_invoice_number . ' - ' . $business_name
 ) . '&body=' . rawurlencode($receipt_share_text);
 
+$receipt_qr_url = self::qr_code_url(
+    array(
+        'Transaction ID: ' . $receipt_invoice_number,
+        'Customer: ' . $transaction->customer_name,
+        'Amount: GBP ' . number_format($receipt_pounds_sent, 2),
+        'Status: ' . $transaction->status
+    )
+);
+
 $download_receipt_lines = array(
     'Transaction Receipt',
     '',
@@ -1117,6 +1134,28 @@ margin-bottom:30px;
 
     </table>
 
+</div>
+
+<div style="
+border:1px solid #ddd;
+padding:20px;
+border-radius:10px;
+margin-bottom:30px;
+display:flex;
+gap:18px;
+align-items:center;
+">
+    <img src="<?php echo esc_url($receipt_qr_url); ?>"
+         alt="Receipt QR code"
+         style="width:150px;height:150px;">
+    <div>
+        <h2 style="margin-top:0;color:#2271b1;">
+            Receipt QR Code
+        </h2>
+        <p style="margin-bottom:0;">
+            Scan to view transaction ID, customer, amount, and status.
+        </p>
+    </div>
 </div>
 
                     <p style="margin-top:20px;">

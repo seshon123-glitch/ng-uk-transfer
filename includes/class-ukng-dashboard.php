@@ -67,6 +67,14 @@ class UKNG_Dashboard {
 
     }
 
+    private static function qr_code_url($lines) {
+
+        $data = implode("\n", $lines);
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . rawurlencode($data);
+
+    }
+
     public static function download_receipt_pdf() {
 
         if (!isset($_GET['ukng_receipt_id'])) {
@@ -144,6 +152,14 @@ class UKNG_Dashboard {
         $business_address = get_option('nguk_business_address');
         $download_url = admin_url('admin.php?page=nguk-transfer&ukng_receipt_id=' . intval($transaction->id));
         $back_url = admin_url('admin.php?page=nguk-transfer&ukng_view=transactions');
+        $qr_url = self::qr_code_url(
+            array(
+                'Transaction ID: ' . $receipt_number,
+                'Customer: ' . $transaction->customer_name,
+                'Amount: GBP ' . number_format($transaction->total_paid, 2),
+                'Status: ' . $transaction->status
+            )
+        );
 
         ob_start();
         ?>
@@ -181,6 +197,9 @@ class UKNG_Dashboard {
         .ukng-receipt-table{width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden}
         .ukng-receipt-table th,.ukng-receipt-table td{padding:14px;border-bottom:1px solid #e5e7eb;text-align:left}
         .ukng-receipt-table th{background:#f8fafc;color:#334155;width:42%}
+        .ukng-receipt-qr{margin-top:22px;border:1px solid #e5e7eb;border-radius:14px;padding:18px;display:flex;gap:16px;align-items:center}
+        .ukng-receipt-qr img{width:150px;height:150px}
+        .ukng-receipt-qr strong{display:block;color:#12372a;margin-bottom:6px}
         .ukng-status{color:#16a34a;font-weight:900}
         .ukng-receipt-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
         .ukng-receipt-actions a,.ukng-receipt-actions button{border:0;border-radius:8px;padding:10px 14px;text-decoration:none;font-weight:800;cursor:pointer}
@@ -241,6 +260,14 @@ class UKNG_Dashboard {
                 <tr><th>Beneficiary Gets</th><td>NGN <?php echo esc_html(number_format($transaction->naira_amount, 2)); ?></td></tr>
                 <tr><th>Status</th><td class="ukng-status"><?php echo esc_html($transaction->status); ?></td></tr>
             </table>
+
+            <div class="ukng-receipt-qr">
+                <img src="<?php echo esc_url($qr_url); ?>" alt="Receipt QR code">
+                <div>
+                    <strong>Receipt QR Code</strong>
+                    <p>Scan to view transaction ID, customer, amount, and status.</p>
+                </div>
+            </div>
 
             <?php if ($show_actions) { ?>
                 <div class="ukng-receipt-actions">
@@ -494,6 +521,7 @@ class UKNG_Dashboard {
                         'beneficiary_bank_details' => $beneficiary_bank_details,
                         'status' => 'Pending',
                         'outstanding_status' => 'Outstanding',
+                        'amount_paid' => 0,
                         'tracking_code' => NGUK_Database::generate_ukng_tracking_code(),
                         'status_updated_at' => current_time('mysql')
                     )
@@ -528,10 +556,49 @@ class UKNG_Dashboard {
             $current_view = 'transactions';
         }
 
+        if (isset($_POST['ukng_update_outstanding_payment'])) {
+            $transaction_id = intval($_POST['transaction_id']);
+            $amount_paid = max(0, floatval($_POST['amount_paid']));
+
+            $transaction = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $transactions_table WHERE id = %d",
+                    $transaction_id
+                )
+            );
+
+            if ($transaction) {
+                $amount_paid = min($amount_paid, floatval($transaction->total_paid));
+                $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
+
+                $wpdb->update(
+                    $transactions_table,
+                    array(
+                        'amount_paid' => $amount_paid,
+                        'outstanding_status' => $remaining_balance <= 0 ? 'Cleared' : 'Outstanding'
+                    ),
+                    array('id' => $transaction_id)
+                );
+
+                echo '<div class="updated"><p>Customer wallet updated.</p></div>';
+                $current_view = 'outstanding';
+            }
+        }
+
         if (isset($_GET['ukng_clear_outstanding'])) {
+            $clear_transaction = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT total_paid FROM $transactions_table WHERE id = %d",
+                    intval($_GET['ukng_clear_outstanding'])
+                )
+            );
+
             $wpdb->update(
                 $transactions_table,
-                array('outstanding_status' => 'Cleared'),
+                array(
+                    'outstanding_status' => 'Cleared',
+                    'amount_paid' => $clear_transaction ? floatval($clear_transaction->total_paid) : 0
+                ),
                 array('id' => intval($_GET['ukng_clear_outstanding']))
             );
             echo '<div class="updated"><p>Outstanding balance cleared.</p></div>';
@@ -623,9 +690,15 @@ class UKNG_Dashboard {
         );
         $commission_rules = $wpdb->get_results("SELECT * FROM $commissions_table ORDER BY min_amount ASC");
         $total_outstanding = 0;
+        $total_wallet_paid = 0;
+        $total_remaining_balance = 0;
 
         foreach ($outstanding_transactions as $outstanding_transaction) {
+            $wallet_paid = min(floatval($outstanding_transaction->amount_paid), floatval($outstanding_transaction->total_paid));
+            $remaining_balance = max(0, floatval($outstanding_transaction->total_paid) - $wallet_paid);
             $total_outstanding += floatval($outstanding_transaction->total_paid);
+            $total_wallet_paid += $wallet_paid;
+            $total_remaining_balance += $remaining_balance;
         }
 
         $month_totals = $wpdb->get_results(
@@ -894,34 +967,58 @@ class UKNG_Dashboard {
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('outstanding', $current_view)); ?>">
-                <h2>Outstanding Balance</h2>
+                <h2>Customer Wallet / Outstanding Balance</h2>
+                <div class="ukng-grid" style="margin-bottom:18px;">
+                    <div class="ukng-card"><span>Total Outstanding</span><strong>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></strong></div>
+                    <div class="ukng-card"><span>Total Paid</span><strong>GBP <?php echo esc_html(number_format($total_wallet_paid, 2)); ?></strong></div>
+                    <div class="ukng-card"><span>Remaining Balance</span><strong>GBP <?php echo esc_html(number_format($total_remaining_balance, 2)); ?></strong></div>
+                </div>
                 <table class="widefat striped">
                     <thead>
                         <tr>
                             <th>Customer Name</th>
-                            <th>Total Amount Owed</th>
+                            <th>Total Outstanding</th>
+                            <th>Total Paid</th>
+                            <th>Remaining Balance</th>
+                            <th>Update Payment</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($outstanding_transactions) { ?>
                             <?php foreach ($outstanding_transactions as $transaction) { ?>
+                                <?php
+                                $amount_paid = min(floatval($transaction->amount_paid), floatval($transaction->total_paid));
+                                $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
+                                ?>
                                 <tr>
                                     <td><?php echo esc_html($transaction->customer_name); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
+                                    <td>GBP <?php echo esc_html(number_format($amount_paid, 2)); ?></td>
+                                    <td>GBP <?php echo esc_html(number_format($remaining_balance, 2)); ?></td>
+                                    <td>
+                                        <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                            <input type="hidden" name="transaction_id" value="<?php echo intval($transaction->id); ?>">
+                                            <input type="number" step="0.01" min="0" max="<?php echo esc_attr($transaction->total_paid); ?>" name="amount_paid" value="<?php echo esc_attr($amount_paid); ?>" style="width:120px;">
+                                            <input type="submit" name="ukng_update_outstanding_payment" class="button" value="Save">
+                                        </form>
+                                    </td>
                                     <td>
                                         <a class="button" style="background:#16a34a;color:#fff;border-color:#16a34a;" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_clear_outstanding=' . intval($transaction->id))); ?>" onclick="return confirm('Delete this outstanding balance after customer payment?');">Delete Balance</a>
                                     </td>
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="3">No outstanding UK to Nigeria balances found.</td></tr>
+                            <tr><td colspan="6">No outstanding UK to Nigeria balances found.</td></tr>
                         <?php } ?>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th>Total Outstanding Balance</th>
+                            <th>Totals</th>
                             <th>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></th>
+                            <th>GBP <?php echo esc_html(number_format($total_wallet_paid, 2)); ?></th>
+                            <th>GBP <?php echo esc_html(number_format($total_remaining_balance, 2)); ?></th>
+                            <th></th>
                             <th></th>
                         </tr>
                     </tfoot>
