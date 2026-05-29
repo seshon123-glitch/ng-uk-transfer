@@ -163,6 +163,7 @@ self::create_ukng_tables($charset_collate);
         global $wpdb;
 
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
+        $customers_table = $wpdb->prefix . 'nguk_customers';
 
         self::create_ukng_tables($wpdb->get_charset_collate());
 
@@ -205,6 +206,21 @@ self::create_ukng_tables($charset_collate);
 
             $wpdb->query(
                 "ALTER TABLE $transactions_table ADD status_updated_at datetime NULL"
+            );
+
+        }
+
+        $kyc_documents_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $customers_table LIKE %s",
+                'kyc_documents'
+            )
+        );
+
+        if (!$kyc_documents_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $customers_table ADD kyc_documents longtext NULL"
             );
 
         }
@@ -281,11 +297,27 @@ self::create_ukng_tables($charset_collate);
             email varchar(255) NULL,
             address longtext NULL,
             notes longtext NULL,
+            kyc_documents longtext NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) $charset_collate;";
 
         dbDelta($customers_sql);
+
+        $ukng_kyc_documents_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $customers_table LIKE %s",
+                'kyc_documents'
+            )
+        );
+
+        if (!$ukng_kyc_documents_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $customers_table ADD kyc_documents longtext NULL"
+            );
+
+        }
 
         $beneficiaries_sql = "CREATE TABLE $beneficiaries_table (
             id mediumint(9) NOT NULL AUTO_INCREMENT,

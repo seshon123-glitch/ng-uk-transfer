@@ -104,6 +104,67 @@ if (!function_exists('nguk_build_receipt_pdf')) {
 
 class NGUK_Dashboard {
 
+    private static function upload_kyc_documents($field_name = 'kyc_documents') {
+
+        if (empty($_FILES[$field_name]) || empty($_FILES[$field_name]['name'])) {
+            return array();
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        $documents = array();
+        $files = $_FILES[$field_name];
+
+        foreach ((array) $files['name'] as $index => $name) {
+            if (empty($name) || !isset($files['error'][$index]) || intval($files['error'][$index]) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+
+            $file = array(
+                'name' => sanitize_file_name($name),
+                'type' => isset($files['type'][$index]) ? $files['type'][$index] : '',
+                'tmp_name' => isset($files['tmp_name'][$index]) ? $files['tmp_name'][$index] : '',
+                'error' => isset($files['error'][$index]) ? $files['error'][$index] : 0,
+                'size' => isset($files['size'][$index]) ? $files['size'][$index] : 0
+            );
+
+            $upload = wp_handle_upload($file, array('test_form' => false));
+
+            if (!empty($upload['url'])) {
+                $documents[] = array(
+                    'name' => sanitize_text_field($name),
+                    'url' => esc_url_raw($upload['url'])
+                );
+            }
+        }
+
+        return $documents;
+
+    }
+
+    private static function render_kyc_documents($documents_json) {
+
+        $documents = json_decode((string) $documents_json, true);
+
+        if (!is_array($documents) || empty($documents)) {
+            echo '<span>No documents</span>';
+            return;
+        }
+
+        foreach ($documents as $index => $document) {
+            if (empty($document['url'])) {
+                continue;
+            }
+
+            $name = !empty($document['name'])
+                ? $document['name']
+                : 'Document ' . ($index + 1);
+
+            echo '<a class="button" style="margin:2px;" target="_blank" rel="noopener noreferrer" href="' . esc_url($document['url']) . '">' . esc_html($name) . '</a>';
+        }
+
+    }
+
     public static function download_receipt_pdf() {
 
         if (
@@ -1225,6 +1286,7 @@ SAVE CUSTOMER
 if (isset($_POST['save_customer'])) {
 
     $customers_table = $wpdb->prefix . 'nguk_customers';
+    $kyc_documents = self::upload_kyc_documents();
 
     $wpdb->insert(
 
@@ -1242,7 +1304,9 @@ if (isset($_POST['save_customer'])) {
 
             'nigeria_bank_details' => '',
 
-            'uk_bank_details' => sanitize_textarea_field($_POST['uk_bank_details'])
+            'uk_bank_details' => sanitize_textarea_field($_POST['uk_bank_details']),
+
+            'kyc_documents' => wp_json_encode($kyc_documents)
 
         )
 
@@ -1383,6 +1447,11 @@ $business_address = get_option('nguk_business_address');
                         <tr>
                             <th>Notes</th>
                             <td><?php echo esc_html($customer->notes); ?></td>
+                        </tr>
+
+                        <tr>
+                            <th>KYC Documents</th>
+                            <td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td>
                         </tr>
 
                     </table>
@@ -1607,6 +1676,17 @@ Send Money
     update_option('nguk_business_logo', sanitize_text_field($_POST['business_logo']));
 
     echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
+}
+if (isset($_POST['save_dashboard_theme'])) {
+
+    $theme = isset($_POST['dashboard_theme']) && $_POST['dashboard_theme'] === 'dark'
+        ? 'dark'
+        : 'normal';
+
+    update_option('nguk_dashboard_theme', $theme);
+
+    echo '<div class="updated"><p>Dashboard theme saved successfully.</p></div>';
+
 }
 if (isset($_POST['save_exchange_rates'])) {
 
@@ -2042,7 +2122,9 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 };
         ?>
 
-        <div class="wrap">
+        <?php $nguk_dashboard_theme = get_option('nguk_dashboard_theme', 'normal'); ?>
+
+        <div class="wrap nguk-dashboard-shell <?php echo $nguk_dashboard_theme === 'dark' ? 'nguk-dashboard-dark' : ''; ?>">
 
             <div class="nguk-app-hero">
                 <div>
@@ -2538,6 +2620,55 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     background:#f8fafc;
                 }
 
+                .nguk-dashboard-dark {
+                    background:#0f172a;
+                    color:#e5e7eb;
+                    padding:20px;
+                    border-radius:16px;
+                }
+
+                .nguk-dashboard-dark .nguk-app-nav,
+                .nguk-dashboard-dark .nguk-account-panel,
+                .nguk-dashboard-dark .nguk-tab-panel,
+                .nguk-dashboard-dark .nguk-section-card,
+                .nguk-dashboard-dark > div[style*="background:#fff"],
+                .nguk-dashboard-dark div[style*="background:#fff"] {
+                    background:#111827 !important;
+                    border-color:#334155 !important;
+                    color:#e5e7eb !important;
+                }
+
+                .nguk-dashboard-dark h1,
+                .nguk-dashboard-dark h2,
+                .nguk-dashboard-dark h3,
+                .nguk-dashboard-dark p,
+                .nguk-dashboard-dark th,
+                .nguk-dashboard-dark td,
+                .nguk-dashboard-dark label {
+                    color:#e5e7eb !important;
+                }
+
+                .nguk-dashboard-dark .widefat,
+                .nguk-dashboard-dark .widefat td,
+                .nguk-dashboard-dark .widefat th {
+                    background:#111827 !important;
+                    color:#e5e7eb !important;
+                    border-color:#334155 !important;
+                }
+
+                .nguk-dashboard-dark .widefat tbody tr:nth-child(even),
+                .nguk-dashboard-dark .widefat thead th {
+                    background:#1f2937 !important;
+                }
+
+                .nguk-dashboard-dark input,
+                .nguk-dashboard-dark select,
+                .nguk-dashboard-dark textarea {
+                    background:#020617 !important;
+                    color:#e5e7eb !important;
+                    border-color:#475569 !important;
+                }
+
                 @keyframes ngukRatePulse {
                     0%, 100% { box-shadow:0 2px 12px rgba(0,0,0,0.08); transform:translateY(0); }
                     50% { box-shadow:0 8px 24px rgba(34,113,177,0.25); transform:translateY(-2px); }
@@ -2599,7 +2730,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                 <h2>Exchange Rates</h2>
 
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
                     <table class="form-table">
                         <tr>
                             <th>Buy Rate</th>
@@ -2769,6 +2900,31 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
     </form>
 
+    <hr style="margin:24px 0;">
+
+    <h2>Dashboard Theme</h2>
+
+    <form method="post">
+        <table class="form-table">
+            <tr>
+                <th>Theme Mode</th>
+                <td>
+                    <select name="dashboard_theme">
+                        <option value="normal" <?php selected(get_option('nguk_dashboard_theme', 'normal'), 'normal'); ?>>Normal Mode</option>
+                        <option value="dark" <?php selected(get_option('nguk_dashboard_theme', 'normal'), 'dark'); ?>>Dark Mode</option>
+                    </select>
+                </td>
+            </tr>
+        </table>
+
+        <p>
+            <input type="submit"
+                   name="save_dashboard_theme"
+                   class="button button-primary"
+                   value="Save Theme">
+        </p>
+    </form>
+
 </div>
 
 <?php if (isset($_GET['create_customer'])) { ?>
@@ -2780,7 +2936,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                 <h2>Create Customer</h2>
 
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
 
                     <table class="form-table">
 
@@ -2819,6 +2975,16 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                                           class="large-text"
                                           rows="4"
                                           required></textarea>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th>KYC Documents</th>
+                            <td>
+                                <input type="file"
+                                       name="kyc_documents[]"
+                                       multiple>
+                                <p class="description">Upload one or more KYC documents.</p>
                             </td>
                         </tr>
 
@@ -2926,6 +3092,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                             <th>No.</th>
                             <th>Customer Name</th>
                             <th>Phone</th>
+                            <th>KYC Documents</th>
                             <th>Note / Risk Assessment</th>
                             <th>View Note</th>
                             <th>Profile</th>
@@ -3002,6 +3169,10 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                                 <td>
                                     <?php echo esc_html($customer->phone_number); ?>
+                                </td>
+
+                                <td>
+                                    <?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?>
                                 </td>
 
                                 <td>

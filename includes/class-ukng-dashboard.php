@@ -6,6 +6,67 @@ if (!defined('ABSPATH')) {
 
 class UKNG_Dashboard {
 
+    private static function upload_kyc_documents($field_name = 'kyc_documents') {
+
+        if (empty($_FILES[$field_name]) || empty($_FILES[$field_name]['name'])) {
+            return array();
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        $documents = array();
+        $files = $_FILES[$field_name];
+
+        foreach ((array) $files['name'] as $index => $name) {
+            if (empty($name) || !isset($files['error'][$index]) || intval($files['error'][$index]) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+
+            $file = array(
+                'name' => sanitize_file_name($name),
+                'type' => isset($files['type'][$index]) ? $files['type'][$index] : '',
+                'tmp_name' => isset($files['tmp_name'][$index]) ? $files['tmp_name'][$index] : '',
+                'error' => isset($files['error'][$index]) ? $files['error'][$index] : 0,
+                'size' => isset($files['size'][$index]) ? $files['size'][$index] : 0
+            );
+
+            $upload = wp_handle_upload($file, array('test_form' => false));
+
+            if (!empty($upload['url'])) {
+                $documents[] = array(
+                    'name' => sanitize_text_field($name),
+                    'url' => esc_url_raw($upload['url'])
+                );
+            }
+        }
+
+        return $documents;
+
+    }
+
+    private static function render_kyc_documents($documents_json) {
+
+        $documents = json_decode((string) $documents_json, true);
+
+        if (!is_array($documents) || empty($documents)) {
+            echo '<span>No documents</span>';
+            return;
+        }
+
+        foreach ($documents as $index => $document) {
+            if (empty($document['url'])) {
+                continue;
+            }
+
+            $name = !empty($document['name'])
+                ? $document['name']
+                : 'Document ' . ($index + 1);
+
+            echo '<a class="button" style="margin:2px;" target="_blank" rel="noopener noreferrer" href="' . esc_url($document['url']) . '">' . esc_html($name) . '</a>';
+        }
+
+    }
+
     public static function download_receipt_pdf() {
 
         if (!isset($_GET['ukng_receipt_id'])) {
@@ -297,7 +358,18 @@ class UKNG_Dashboard {
             $current_view = 'settings';
         }
 
+        if (isset($_POST['ukng_save_theme'])) {
+            $theme = isset($_POST['dashboard_theme']) && $_POST['dashboard_theme'] === 'dark'
+                ? 'dark'
+                : 'normal';
+            update_option('nguk_dashboard_theme', $theme);
+            echo '<div class="updated"><p>Dashboard theme saved.</p></div>';
+            $current_view = 'settings';
+        }
+
         if (isset($_POST['ukng_save_customer'])) {
+            $kyc_documents = self::upload_kyc_documents();
+
             $wpdb->insert(
                 $customers_table,
                 array(
@@ -305,7 +377,8 @@ class UKNG_Dashboard {
                     'phone_number' => sanitize_text_field($_POST['phone_number']),
                     'email' => sanitize_email($_POST['email']),
                     'address' => sanitize_textarea_field($_POST['address']),
-                    'notes' => sanitize_textarea_field($_POST['notes'])
+                    'notes' => sanitize_textarea_field($_POST['notes']),
+                    'kyc_documents' => wp_json_encode($kyc_documents)
                 )
             );
             echo '<div class="updated"><p>UK-Nigeria customer saved.</p></div>';
@@ -471,9 +544,76 @@ class UKNG_Dashboard {
         }
 
         $exchange_rate = get_option('ukng_exchange_rate', '2000');
-        $customers = $wpdb->get_results("SELECT * FROM $customers_table ORDER BY customer_name ASC");
+        $customer_search = isset($_GET['ukng_customer_search'])
+            ? sanitize_text_field(wp_unslash($_GET['ukng_customer_search']))
+            : '';
+        $transaction_search = isset($_GET['ukng_transaction_search'])
+            ? sanitize_text_field(wp_unslash($_GET['ukng_transaction_search']))
+            : '';
+
+        $all_customers = $wpdb->get_results("SELECT * FROM $customers_table ORDER BY customer_name ASC");
+        $customers = $all_customers;
+
+        if ($customer_search !== '') {
+            $customer_like = '%' . $wpdb->esc_like($customer_search) . '%';
+            $customers = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $customers_table
+                     WHERE customer_name LIKE %s
+                        OR phone_number LIKE %s
+                     ORDER BY customer_name ASC",
+                    $customer_like,
+                    $customer_like
+                )
+            );
+        }
+
         $beneficiaries = $wpdb->get_results("SELECT * FROM $beneficiaries_table ORDER BY beneficiary_name ASC");
-        $transactions = $wpdb->get_results("SELECT * FROM $transactions_table ORDER BY id DESC LIMIT 50");
+
+        if ($transaction_search !== '') {
+            $transaction_like = '%' . $wpdb->esc_like($transaction_search) . '%';
+            $transaction_id_search = preg_replace('/\D/', '', $transaction_search);
+            $transaction_id = 0;
+
+            if ($transaction_id_search !== '') {
+                $transaction_id = intval($transaction_id_search);
+
+                if (stripos($transaction_search, 'UKNG') === 0) {
+                    $transaction_id = max(0, $transaction_id - 9000);
+                }
+            }
+
+            $transactions = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT t.*, c.phone_number AS customer_phone
+                     FROM $transactions_table t
+                     LEFT JOIN $customers_table c ON c.id = t.customer_id
+                     WHERE t.customer_name LIKE %s
+                        OR t.beneficiary_name LIKE %s
+                        OR c.phone_number LIKE %s
+                        OR t.tracking_code LIKE %s
+                        OR CONCAT('UKNG', t.id + 9000) LIKE %s
+                        OR t.id = %d
+                     ORDER BY t.id DESC
+                     LIMIT 50",
+                    $transaction_like,
+                    $transaction_like,
+                    $transaction_like,
+                    $transaction_like,
+                    $transaction_like,
+                    $transaction_id
+                )
+            );
+        } else {
+            $transactions = $wpdb->get_results(
+                "SELECT t.*, c.phone_number AS customer_phone
+                 FROM $transactions_table t
+                 LEFT JOIN $customers_table c ON c.id = t.customer_id
+                 ORDER BY t.id DESC
+                 LIMIT 50"
+            );
+        }
+
         $outstanding_transactions = $wpdb->get_results(
             "SELECT * FROM $transactions_table
              WHERE outstanding_status IS NULL
@@ -501,7 +641,8 @@ class UKNG_Dashboard {
         );
 
         ?>
-        <div class="wrap ukng-dashboard">
+        <?php $dashboard_theme = get_option('nguk_dashboard_theme', 'normal'); ?>
+        <div class="wrap ukng-dashboard <?php echo $dashboard_theme === 'dark' ? 'ukng-dashboard-dark' : ''; ?>">
             <div class="ukng-hero">
                 <div>
                     <p>UK-Nigeria Operations</p>
@@ -554,6 +695,13 @@ class UKNG_Dashboard {
                 .ukng-rate-panel strong{display:block;font-size:40px;line-height:1;color:#12372a;margin-top:6px}
                 .ukng-rate-panel form{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
                 .ukng-rate-panel label{display:block;font-weight:800;color:#334155;margin-bottom:6px}
+                .ukng-search-form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 18px}
+                .ukng-search-form input[type="search"]{min-width:280px;max-width:100%;width:360px}
+                .ukng-dashboard-dark{background:#0f172a;color:#e5e7eb;padding:20px;border-radius:14px}
+                .ukng-dashboard-dark .ukng-panel,.ukng-dashboard-dark .ukng-nav,.ukng-dashboard-dark .ukng-rate-panel,.ukng-dashboard-dark .ukng-card{background:#111827;border-color:#334155;color:#e5e7eb}
+                .ukng-dashboard-dark h1,.ukng-dashboard-dark h2,.ukng-dashboard-dark h3,.ukng-dashboard-dark p,.ukng-dashboard-dark th,.ukng-dashboard-dark td,.ukng-dashboard-dark label{color:#e5e7eb}
+                .ukng-dashboard-dark .widefat,.ukng-dashboard-dark .widefat td,.ukng-dashboard-dark .widefat th{background:#111827;color:#e5e7eb;border-color:#334155}
+                .ukng-dashboard-dark input,.ukng-dashboard-dark select,.ukng-dashboard-dark textarea{background:#020617!important;color:#e5e7eb!important;border-color:#475569!important}
                 @media(max-width:900px){.ukng-grid{grid-template-columns:1fr}.ukng-hero{display:block}}
             </style>
 
@@ -583,7 +731,7 @@ class UKNG_Dashboard {
                 <h2>Overview</h2>
                 <div class="ukng-grid">
                     <div class="ukng-card"><span>Today's Rate</span><strong><?php echo esc_html(number_format(floatval($exchange_rate), 2)); ?></strong></div>
-                    <div class="ukng-card"><span>Customers</span><strong><?php echo esc_html(count($customers)); ?></strong></div>
+                    <div class="ukng-card"><span>Customers</span><strong><?php echo esc_html(count($all_customers)); ?></strong></div>
                     <div class="ukng-card"><span>Transactions</span><strong><?php echo esc_html(count($transactions)); ?></strong></div>
                     <div class="ukng-card"><span>Outstanding Balance</span><strong>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></strong></div>
                 </div>
@@ -598,7 +746,7 @@ class UKNG_Dashboard {
                             <td>
                                 <select id="ukng_customer_select" name="customer_id" required>
                                     <option value="">Select Customer</option>
-                                    <?php foreach ($customers as $customer) { ?>
+                                    <?php foreach ($all_customers as $customer) { ?>
                                         <option value="<?php echo intval($customer->id); ?>" <?php selected(isset($_GET['customer_id']) ? intval($_GET['customer_id']) : 0, $customer->id); ?>>
                                             <?php echo esc_html($customer->customer_name); ?>
                                         </option>
@@ -642,21 +790,35 @@ class UKNG_Dashboard {
                 <h2>Customers</h2>
                 <p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_add_customer=1')); ?>">Add Customer</a></p>
 
+                <form method="get" class="ukng-search-form">
+                    <input type="hidden" name="page" value="nguk-transfer">
+                    <input type="hidden" name="ukng_view" value="customers">
+                    <input type="search"
+                           name="ukng_customer_search"
+                           value="<?php echo esc_attr($customer_search); ?>"
+                           placeholder="Search by first name, last name, or phone number">
+                    <input type="submit" class="button button-primary" value="Search">
+                    <?php if ($customer_search !== '') { ?>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers')); ?>">Clear</a>
+                    <?php } ?>
+                </form>
+
                 <?php if (isset($_GET['ukng_add_customer'])) { ?>
-                    <form method="post">
+                    <form method="post" enctype="multipart/form-data">
                         <table class="form-table">
                             <tr><th>Name</th><td><input type="text" name="customer_name" required></td></tr>
                             <tr><th>Phone</th><td><input type="text" name="phone_number"></td></tr>
                             <tr><th>Email</th><td><input type="email" name="email"></td></tr>
                             <tr><th>Address</th><td><textarea name="address" class="large-text"></textarea></td></tr>
                             <tr><th>Notes</th><td><textarea name="notes" class="large-text"></textarea></td></tr>
+                            <tr><th>KYC Documents</th><td><input type="file" name="kyc_documents[]" multiple><p class="description">Upload one or more KYC documents.</p></td></tr>
                         </table>
                         <p><input type="submit" name="ukng_save_customer" class="button button-primary" value="Save Customer"></p>
                     </form>
                 <?php } ?>
 
                 <table class="widefat striped">
-                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Profile</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th></tr></thead>
                     <tbody>
                         <?php if ($customers) { ?>
                             <?php foreach ($customers as $customer) { ?>
@@ -664,11 +826,12 @@ class UKNG_Dashboard {
                                     <td><?php echo esc_html($customer->customer_name); ?></td>
                                     <td><?php echo esc_html($customer->phone_number); ?></td>
                                     <td><?php echo esc_html($customer->email); ?></td>
+                                    <td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td>
                                     <td><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view_customer=' . intval($customer->id))); ?>">View Profile</a></td>
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="4">No UK-Nigeria customers found.</td></tr>
+                            <tr><td colspan="5">No UK-Nigeria customers found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>
@@ -676,10 +839,24 @@ class UKNG_Dashboard {
 
             <div class="<?php echo esc_attr(self::panel_class('transactions', $current_view)); ?>">
                 <h2>Recent Transactions</h2>
+
+                <form method="get" class="ukng-search-form">
+                    <input type="hidden" name="page" value="nguk-transfer">
+                    <input type="hidden" name="ukng_view" value="transactions">
+                    <input type="search"
+                           name="ukng_transaction_search"
+                           value="<?php echo esc_attr($transaction_search); ?>"
+                           placeholder="Search by name, phone number, or transaction ID">
+                    <input type="submit" class="button button-primary" value="Search">
+                    <?php if ($transaction_search !== '') { ?>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=transactions')); ?>">Clear</a>
+                    <?php } ?>
+                </form>
+
                 <table class="widefat striped">
                     <thead>
                         <tr>
-                            <th>No.</th><th>Customer</th><th>Beneficiary</th><th>Pounds</th><th>Commission</th><th>Total Paid</th><th>Naira</th><th>Status</th><th>Actions</th>
+                            <th>No.</th><th>Transaction ID</th><th>Customer</th><th>Phone</th><th>Beneficiary</th><th>Pounds</th><th>Commission</th><th>Total Paid</th><th>Naira</th><th>Status</th><th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -687,7 +864,9 @@ class UKNG_Dashboard {
                             <?php foreach ($transactions as $transaction) { ?>
                                 <tr>
                                     <td><?php echo $count++; ?></td>
+                                    <td><?php echo esc_html('UKNG' . (9000 + intval($transaction->id))); ?></td>
                                     <td><?php echo esc_html($transaction->customer_name); ?></td>
+                                    <td><?php echo esc_html(isset($transaction->customer_phone) ? $transaction->customer_phone : ''); ?></td>
                                     <td><?php echo esc_html($transaction->beneficiary_name); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->pounds_sent, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->commission_amount, 2)); ?></td>
@@ -708,7 +887,7 @@ class UKNG_Dashboard {
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="9">No UK to Nigeria transactions found.</td></tr>
+                            <tr><td colspan="11">No UK to Nigeria transactions found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>
@@ -826,6 +1005,20 @@ class UKNG_Dashboard {
             <div class="<?php echo esc_attr(self::panel_class('settings', $current_view)); ?>">
                 <h2>UK to Nigeria Settings</h2>
                 <p>Today's Rate can be edited from the rate panel at the top of this dashboard.</p>
+                <form method="post">
+                    <table class="form-table">
+                        <tr>
+                            <th>Dashboard Theme</th>
+                            <td>
+                                <select name="dashboard_theme">
+                                    <option value="normal" <?php selected($dashboard_theme, 'normal'); ?>>Normal Mode</option>
+                                    <option value="dark" <?php selected($dashboard_theme, 'dark'); ?>>Dark Mode</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+                    <p><input type="submit" name="ukng_save_theme" class="button button-primary" value="Save Theme"></p>
+                </form>
             </div>
         </div>
 
@@ -897,6 +1090,7 @@ class UKNG_Dashboard {
                 <tr><th>Email</th><td><?php echo esc_html($customer->email); ?></td></tr>
                 <tr><th>Address</th><td><?php echo esc_html($customer->address); ?></td></tr>
                 <tr><th>Notes</th><td><?php echo esc_html($customer->notes); ?></td></tr>
+                <tr><th>KYC Documents</th><td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td></tr>
             </table>
 
             <hr style="margin:30px 0;">
