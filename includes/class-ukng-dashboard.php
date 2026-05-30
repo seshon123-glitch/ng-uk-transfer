@@ -705,7 +705,7 @@ class UKNG_Dashboard {
             "SELECT DATE_FORMAT(created_at, '%M %Y') as month_year,
                     COUNT(*) as total_transactions,
                     SUM(pounds_sent) as total_pounds,
-                    SUM(commission_amount) as total_commission,
+                    SUM(commission_amount) as total_profit,
                     SUM(total_paid) as total_paid,
                     SUM(naira_amount) as total_naira
              FROM $transactions_table
@@ -882,7 +882,12 @@ class UKNG_Dashboard {
                             <tr><th>Name</th><td><input type="text" name="customer_name" required></td></tr>
                             <tr><th>Phone</th><td><input type="text" name="phone_number"></td></tr>
                             <tr><th>Email</th><td><input type="email" name="email"></td></tr>
-                            <tr><th>Address</th><td><textarea name="address" class="large-text"></textarea></td></tr>
+                            <tr>
+                                <th>Address</th>
+                                <td>
+                                    <textarea name="address" class="large-text"></textarea>
+                                </td>
+                            </tr>
                             <tr><th>Notes</th><td><textarea name="notes" class="large-text"></textarea></td></tr>
                             <tr><th>KYC Documents</th><td><input type="file" name="kyc_documents[]" multiple><p class="description">Upload one or more KYC documents.</p></td></tr>
                         </table>
@@ -1078,22 +1083,35 @@ class UKNG_Dashboard {
 
             <div class="<?php echo esc_attr(self::panel_class('reports', $current_view)); ?>">
                 <h2>Monthly Turnovers</h2>
-                <table class="widefat striped">
-                    <thead><tr><th>Month</th><th>Transactions</th><th>Total Pounds</th><th>Commission</th><th>Total Paid</th><th>Total Naira</th></tr></thead>
+                <table class="widefat striped"
+                       style="margin-top:20px;border:1px solid #dbe4ee;border-radius:14px;overflow:hidden;font-size:15px;font-weight:700;box-shadow:0 14px 32px rgba(15,23,42,0.09);">
+                    <thead style="background:#12372a;color:#fff;">
+                        <tr>
+                            <th style="color:#fff;padding:14px 12px;">No.</th>
+                            <th style="color:#fff;padding:14px 12px;">Month</th>
+                            <th style="color:#fff;padding:14px 12px;">Transactions</th>
+                            <th style="color:#fff;padding:14px 12px;">Total Pounds</th>
+                            <th style="color:#fff;padding:14px 12px;">Total Profit</th>
+                            <th style="color:#fff;padding:14px 12px;">Total Paid</th>
+                            <th style="color:#fff;padding:14px 12px;">Total Naira</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         <?php if ($month_totals) { ?>
+                            <?php $monthly_count = 1; ?>
                             <?php foreach ($month_totals as $month) { ?>
-                                <tr>
-                                    <td><?php echo esc_html($month->month_year); ?></td>
+                                <tr style="height:60px;font-weight:700;">
+                                    <td style="font-weight:900;color:#12372a;"><?php echo esc_html($monthly_count++); ?></td>
+                                    <td style="font-weight:900;color:#111827;"><?php echo esc_html($month->month_year); ?></td>
                                     <td><?php echo esc_html(number_format($month->total_transactions)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($month->total_pounds, 2)); ?></td>
-                                    <td>GBP <?php echo esc_html(number_format($month->total_commission, 2)); ?></td>
+                                    <td style="color:#15803d;font-weight:900;">GBP <?php echo esc_html(number_format($month->total_profit, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($month->total_paid, 2)); ?></td>
                                     <td>NGN <?php echo esc_html(number_format($month->total_naira, 2)); ?></td>
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="6">No monthly turnover data found.</td></tr>
+                            <tr><td colspan="7">No monthly turnover data found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>

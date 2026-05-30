@@ -4048,27 +4048,29 @@ $monthly_turnovers_page = array_slice(
 
 style="
 margin-top:20px;
-border-radius:12px;
+border:1px solid #dbe4ee;
+border-radius:14px;
 overflow:hidden;
 font-size:15px;
-box-shadow:0 2px 10px rgba(0,0,0,0.05);
+font-weight:700;
+box-shadow:0 14px 32px rgba(15,23,42,0.09);
 ">
 
-        <thead style="background:#f7f7f7;">
+        <thead style="background:#12372a;color:#fff;">
 
             <tr>
 
-                <th>No.</th>
+                <th style="color:#fff;padding:14px 12px;">No.</th>
 
-                <th>Month</th>
+                <th style="color:#fff;padding:14px 12px;">Month</th>
 
-                <th>Total Transactions</th>
+                <th style="color:#fff;padding:14px 12px;">Total Transactions</th>
 
-                <th>Total Naira</th>
+                <th style="color:#fff;padding:14px 12px;">Total Naira</th>
 
-                <th>Total Pounds</th>
+                <th style="color:#fff;padding:14px 12px;">Total Pounds</th>
 
-                <th>Total Profit</th>
+                <th style="color:#fff;padding:14px 12px;">Total Profit</th>
 
             </tr>
 
@@ -4086,13 +4088,13 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
 
                     ?>
 
-                 <tr style="height:60px;">
+                 <tr style="height:60px;font-weight:700;">
 
-                        <td>
+                        <td style="font-weight:900;color:#12372a;">
                             <?php echo $monthly_count++; ?>
                         </td>
 
-                        <td>
+                        <td style="font-weight:900;color:#111827;">
                             <?php echo esc_html($turnover->month_year); ?>
                         </td>
 
@@ -4108,7 +4110,7 @@ box-shadow:0 2px 10px rgba(0,0,0,0.05);
                             £<?php echo number_format($turnover->total_pounds, 2); ?>
                         </td>
 
-                        <td style="color:green;">
+                        <td style="color:#15803d;font-weight:900;">
                             £<?php echo number_format($turnover->total_profit, 2); ?>
                         </td>
 

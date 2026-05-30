@@ -165,7 +165,7 @@ class NGUK_Customers {
                                 type="text"
                                 name="address"
                                 class="large-text"
-                                placeholder="Enter postcode or address"
+                                placeholder="Enter address"
                             >
 
                         </td>
