@@ -3,6 +3,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!class_exists('NGUK_Reminders') && defined('NGUK_PLUGIN_PATH')) {
+    require_once NGUK_PLUGIN_PATH . 'includes/class-reminders.php';
+}
+
 if (!function_exists('nguk_pdf_escape')) {
 
     function nguk_pdf_escape($text) {
@@ -162,6 +166,27 @@ class NGUK_Dashboard {
 
             echo '<a class="button" style="margin:2px;" target="_blank" rel="noopener noreferrer" href="' . esc_url($document['url']) . '">' . esc_html($name) . '</a>';
         }
+
+    }
+
+    private static function business_logo_url() {
+
+        $business_logo = trim((string) get_option('nguk_business_logo'));
+
+        if ($business_logo === '') {
+            return '';
+        }
+
+        if (ctype_digit($business_logo)) {
+            $attachment_url = wp_get_attachment_image_url(intval($business_logo), 'full');
+            return $attachment_url ? $attachment_url : '';
+        }
+
+        if (preg_match('/localhost|127\.0\.0\.1|local sites/i', $business_logo)) {
+            return '';
+        }
+
+        return esc_url_raw($business_logo);
 
     }
 
@@ -842,7 +867,7 @@ body {
                 <div class="wrap">
                     <?php
 
-$business_logo = get_option('nguk_business_logo');
+$business_logo = self::business_logo_url();
 
 $business_name = get_option('nguk_business_name');
 
@@ -1394,6 +1419,28 @@ if (isset($_POST['update_customer_notes'])) {
     }
 
 }
+
+if (isset($_GET['delete_customer'])) {
+
+    $customers_table = $wpdb->prefix . 'nguk_customers';
+    $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+    $customer_id = intval($_GET['delete_customer']);
+
+    if ($customer_id > 0 && isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'nguk_delete_customer_' . $customer_id)) {
+
+        $wpdb->delete($beneficiaries_table, array('customer_id' => $customer_id), array('%d'));
+        $wpdb->delete($customers_table, array('id' => $customer_id), array('%d'));
+
+        echo '<div class="updated"><p>Customer deleted successfully.</p></div>';
+        $nguk_force_panel = 'customers';
+
+    } else {
+
+        echo '<div class="notice notice-error"><p>Customer delete request could not be verified.</p></div>';
+
+    }
+
+}
         /* =========================
            VIEW CUSTOMER
         ========================== */
@@ -1415,7 +1462,7 @@ if (isset($_POST['update_customer_notes'])) {
                 <div class="wrap">
                     <?php
 
-$business_logo = get_option('nguk_business_logo');
+$business_logo = self::business_logo_url();
 
 $business_name = get_option('nguk_business_name');
 
@@ -1712,7 +1759,7 @@ Send Money
 
     update_option('nguk_business_website', sanitize_text_field($_POST['business_website']));
 
-    update_option('nguk_business_logo', sanitize_text_field($_POST['business_logo']));
+    update_option('nguk_business_logo', esc_url_raw($_POST['business_logo']));
 
     echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
 }
@@ -2120,12 +2167,17 @@ if (!empty($nguk_force_panel)) {
 
 } elseif (
     isset($_GET['create_customer']) ||
+    isset($_GET['delete_customer']) ||
     isset($_GET['view_customer_note']) ||
     isset($_GET['customer_search']) ||
     isset($_GET['customer_page'])
 ) {
 
     $nguk_current_panel = 'customers';
+
+} elseif (isset($_GET['reminder_id'])) {
+
+    $nguk_current_panel = 'reminders';
 
 } elseif (isset($_GET['monthly_page'])) {
 
@@ -2142,6 +2194,7 @@ $nguk_allowed_panels = array(
     'payments',
     'customers',
     'transactions',
+    'reminders',
     'reports',
     'settings'
 );
@@ -2226,9 +2279,12 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                 <a href="?page=nguk-transfer&nguk_view=payments" class="nguk-nav-button" data-nguk-tab="payments" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('payments');return false;}">Payments</a>
                 <a href="?page=nguk-transfer&nguk_view=customers" class="nguk-nav-button" data-nguk-tab="customers" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('customers');return false;}">Customers</a>
                 <a href="?page=nguk-transfer&nguk_view=transactions" class="nguk-nav-button" data-nguk-tab="transactions" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('transactions');return false;}">Transactions</a>
+                <a href="?page=nguk-transfer&nguk_view=reminders" class="nguk-nav-button" data-nguk-tab="reminders" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('reminders');return false;}"><?php echo wp_kses_post(NGUK_Reminders::render_badge('nguk')); ?></a>
                 <a href="?page=nguk-transfer&nguk_view=reports" class="nguk-nav-button" data-nguk-tab="reports" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('reports');return false;}">Reports</a>
                 <a href="?page=nguk-transfer&nguk_view=settings" class="nguk-nav-button" data-nguk-tab="settings" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('settings');return false;}">Settings</a>
             </nav>
+
+            <?php NGUK_Reminders::render_ticker('nguk_view', 'nguk'); ?>
 
             <script>
             (function(){
@@ -2394,6 +2450,9 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     )){
                         return 'customers';
                     }
+                    if(params && params.has('reminder_id')){
+                        return 'reminders';
+                    }
                     if(params && params.has('monthly_page')){
                         return 'reports';
                     }
@@ -2433,6 +2492,11 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
             $dashboard_sell_rate = get_option('nguk_sell_rate', '1900');
 
             $dashboard_transfer_fee = get_option('nguk_transfer_fee', '0');
+
+            $dashboard_customers_table = $wpdb->prefix . 'nguk_customers';
+            $dashboard_transactions_table = $wpdb->prefix . 'nguk_transactions';
+            $dashboard_customer_count = intval($wpdb->get_var("SELECT COUNT(*) FROM $dashboard_customers_table"));
+            $dashboard_transaction_count = intval($wpdb->get_var("SELECT COUNT(*) FROM $dashboard_transactions_table"));
 
             ?>
 
@@ -2733,20 +2797,84 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     line-height:1.1;
                     color:#111827;
                 }
+
+                .nguk-overview-panel {
+                    background:#fff;
+                    padding:28px;
+                    border-radius:16px;
+                    margin-top:24px;
+                    border:1px solid #e5e7eb;
+                    box-shadow:0 10px 26px rgba(15,23,42,0.06);
+                }
+
+                .nguk-overview-panel h2 {
+                    margin:0 0 18px;
+                    font-size:22px;
+                    font-weight:800;
+                }
+
+                .nguk-overview-grid {
+                    display:grid;
+                    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+                    gap:18px;
+                }
+
+                .nguk-overview-card {
+                    background:#f8fafc;
+                    border:1px solid #dbe4ee;
+                    border-radius:12px;
+                    padding:20px 22px;
+                    min-height:100px;
+                }
+
+                .nguk-overview-card span,
+                .nguk-overview-card h2 {
+                    display:block;
+                    margin:0 0 10px;
+                    color:#64748b;
+                    font-size:13px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                }
+
+                .nguk-overview-card strong {
+                    display:block;
+                    color:#0f172a;
+                    font-size:30px;
+                    line-height:1.1;
+                    font-weight:900;
+                }
             </style>
 
             <div class="<?php echo esc_attr($nguk_panel_class('overview')); ?>"
-                 data-nguk-panel="overview"
-                 style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:20px;">
+                 data-nguk-panel="overview">
 
-                <div class="nguk-rate-card">
-                    <h2>Buy Rate</h2>
-                    <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_buy_rate), 2)); ?></strong>
-                </div>
+                <div class="nguk-overview-panel">
+                    <h2>Overview</h2>
 
-                <div class="nguk-rate-card">
-                    <h2>Sell Rate</h2>
-                    <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_sell_rate), 2)); ?></strong>
+                    <div class="nguk-overview-grid">
+                        <div class="nguk-overview-card">
+                            <span>Buy Rate</span>
+                            <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_buy_rate), 2)); ?></strong>
+                        </div>
+
+                        <div class="nguk-overview-card">
+                            <span>Sell Rate</span>
+                            <strong>&#8358;<?php echo esc_html(number_format(floatval($dashboard_sell_rate), 2)); ?></strong>
+                        </div>
+
+                        <div class="nguk-overview-card">
+                            <span>Customers</span>
+                            <strong><?php echo esc_html(number_format($dashboard_customer_count)); ?></strong>
+                        </div>
+
+                        <div class="nguk-overview-card">
+                            <span>Transactions</span>
+                            <strong><?php echo esc_html(number_format($dashboard_transaction_count)); ?></strong>
+                        </div>
+
+                        <?php NGUK_Reminders::render_overview_widget('nguk-overview-card', 'nguk'); ?>
+                    </div>
                 </div>
 
             </div>
@@ -2824,6 +2952,8 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
             </div>
 
             <?php } ?>
+
+            <?php NGUK_Reminders::render_panel($nguk_panel_class('reminders'), 'nguk_view', 'nguk'); ?>
 
             <div style="display:none;">
 
@@ -3135,6 +3265,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                             <th>Note / Risk Assessment</th>
                             <th>View Note</th>
                             <th>Profile</th>
+                            <th>Delete</th>
                         </tr>
                     </thead>
 
@@ -3252,6 +3383,16 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                                     </a>
 
+                                </td>
+
+                                <td>
+                                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&nguk_view=customers&delete_customer=' . intval($customer->id)), 'nguk_delete_customer_' . intval($customer->id))); ?>"
+                                       class="button"
+                                       title="Delete customer"
+                                       onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
+                                       style="background:#dc2626;border-color:#dc2626;color:#fff;">
+                                        <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
+                                    </a>
                                 </td>
 
                             </tr>

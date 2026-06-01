@@ -4,6 +4,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!class_exists('NGUK_Reminders') && defined('NGUK_PLUGIN_PATH')) {
+    require_once NGUK_PLUGIN_PATH . 'includes/class-reminders.php';
+}
+
 class UKNG_Dashboard {
 
     private static function upload_kyc_documents($field_name = 'kyc_documents') {
@@ -64,6 +68,27 @@ class UKNG_Dashboard {
 
             echo '<a class="button" style="margin:2px;" target="_blank" rel="noopener noreferrer" href="' . esc_url($document['url']) . '">' . esc_html($name) . '</a>';
         }
+
+    }
+
+    private static function business_logo_url() {
+
+        $business_logo = trim((string) get_option('nguk_business_logo'));
+
+        if ($business_logo === '') {
+            return '';
+        }
+
+        if (ctype_digit($business_logo)) {
+            $attachment_url = wp_get_attachment_image_url(intval($business_logo), 'full');
+            return $attachment_url ? $attachment_url : '';
+        }
+
+        if (preg_match('/localhost|127\.0\.0\.1|local sites/i', $business_logo)) {
+            return '';
+        }
+
+        return esc_url_raw($business_logo);
 
     }
 
@@ -145,7 +170,7 @@ class UKNG_Dashboard {
 
     private static function receipt_html($transaction, $receipt_number, $show_actions) {
 
-        $business_logo = get_option('nguk_business_logo');
+        $business_logo = self::business_logo_url();
         $business_name = get_option('nguk_business_name');
         $business_phone = get_option('nguk_business_phone');
         $business_email = get_option('nguk_business_email');
@@ -328,6 +353,7 @@ class UKNG_Dashboard {
             'transactions',
             'outstanding',
             'commissions',
+            'reminders',
             'reports',
             'settings'
         );
@@ -410,6 +436,19 @@ class UKNG_Dashboard {
             );
             echo '<div class="updated"><p>UK-Nigeria customer saved.</p></div>';
             $current_view = 'customers';
+        }
+
+        if (isset($_GET['ukng_delete_customer'])) {
+            $customer_id = intval($_GET['ukng_delete_customer']);
+
+            if ($customer_id > 0 && isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'ukng_delete_customer_' . $customer_id)) {
+                $wpdb->delete($beneficiaries_table, array('customer_id' => $customer_id), array('%d'));
+                $wpdb->delete($customers_table, array('id' => $customer_id), array('%d'));
+                echo '<div class="updated"><p>UK-Nigeria customer deleted.</p></div>';
+                $current_view = 'customers';
+            } else {
+                echo '<div class="notice notice-error"><p>Customer delete request could not be verified.</p></div>';
+            }
         }
 
         if (isset($_POST['ukng_save_beneficiary'])) {
@@ -737,15 +776,18 @@ class UKNG_Dashboard {
                     'transactions' => 'Transactions',
                     'outstanding' => 'Outstanding Balance',
                     'commissions' => 'Commissions',
+                    'reminders' => NGUK_Reminders::render_badge('ukng'),
                     'reports' => 'Reports',
                     'settings' => 'Settings'
                 );
                 foreach ($nav_items as $view => $label) {
                     $class = $view === $current_view ? 'is-active' : '';
-                    echo '<a class="' . esc_attr($class) . '" href="' . esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=' . $view)) . '">' . esc_html($label) . '</a>';
+                    echo '<a class="' . esc_attr($class) . '" href="' . esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=' . $view)) . '">' . wp_kses_post($label) . '</a>';
                 }
                 ?>
             </nav>
+
+            <?php NGUK_Reminders::render_ticker('ukng_view', 'ukng'); ?>
 
             <style>
                 .ukng-dashboard{max-width:1360px}
@@ -807,6 +849,7 @@ class UKNG_Dashboard {
                     <div class="ukng-card"><span>Customers</span><strong><?php echo esc_html(count($all_customers)); ?></strong></div>
                     <div class="ukng-card"><span>Transactions</span><strong><?php echo esc_html(count($transactions)); ?></strong></div>
                     <div class="ukng-card"><span>Outstanding Balance</span><strong>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></strong></div>
+                    <?php NGUK_Reminders::render_overview_widget('ukng-card', 'ukng'); ?>
                 </div>
             </div>
 
@@ -896,7 +939,7 @@ class UKNG_Dashboard {
                 <?php } ?>
 
                 <table class="widefat striped">
-                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th><th>Delete</th></tr></thead>
                     <tbody>
                         <?php if ($customers) { ?>
                             <?php foreach ($customers as $customer) { ?>
@@ -906,10 +949,19 @@ class UKNG_Dashboard {
                                     <td><?php echo esc_html($customer->email); ?></td>
                                     <td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td>
                                     <td><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view_customer=' . intval($customer->id))); ?>">View Profile</a></td>
+                                    <td>
+                                        <a class="button"
+                                           title="Delete customer"
+                                           style="background:#dc2626;border-color:#dc2626;color:#fff;"
+                                           onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
+                                           href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_delete_customer=' . intval($customer->id)), 'ukng_delete_customer_' . intval($customer->id))); ?>">
+                                            <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
+                                        </a>
+                                    </td>
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="5">No UK-Nigeria customers found.</td></tr>
+                            <tr><td colspan="6">No UK-Nigeria customers found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>
@@ -1080,6 +1132,8 @@ class UKNG_Dashboard {
                     </tbody>
                 </table>
             </div>
+
+            <?php NGUK_Reminders::render_panel(self::panel_class('reminders', $current_view), 'ukng_view', 'ukng'); ?>
 
             <div class="<?php echo esc_attr(self::panel_class('reports', $current_view)); ?>">
                 <h2>Monthly Turnovers</h2>

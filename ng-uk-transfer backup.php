@@ -27,6 +27,7 @@ define('NGUK_PLUGIN_URL', plugin_dir_url(__FILE__));
 */
 
 require_once NGUK_PLUGIN_PATH . 'includes/class-database.php';
+require_once NGUK_PLUGIN_PATH . 'includes/class-reminders.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-dashboard.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-ukng-dashboard.php';
 
@@ -101,6 +102,7 @@ function nguk_dashboard_page() {
         isset($_GET['ukng_view_receipt']) ||
         isset($_GET['ukng_receipt_id']) ||
         isset($_GET['ukng_add_customer']) ||
+        isset($_GET['ukng_delete_customer']) ||
         isset($_GET['ukng_delete_transaction']) ||
         isset($_GET['ukng_clear_outstanding']) ||
         isset($_GET['ukng_delete_commission'])

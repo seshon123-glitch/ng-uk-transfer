@@ -155,6 +155,7 @@ $beneficiaries_sql = "CREATE TABLE $beneficiaries_table (
 dbDelta($beneficiaries_sql);
 
 self::create_ukng_tables($charset_collate);
+self::create_reminders_table($charset_collate);
 
     }
 
@@ -166,6 +167,7 @@ self::create_ukng_tables($charset_collate);
         $customers_table = $wpdb->prefix . 'nguk_customers';
 
         self::create_ukng_tables($wpdb->get_charset_collate());
+        self::create_reminders_table($wpdb->get_charset_collate());
 
         $table_exists = $wpdb->get_var(
             $wpdb->prepare(
@@ -247,6 +249,14 @@ self::create_ukng_tables($charset_collate);
         } while ($exists);
 
         return $code;
+
+    }
+
+    public static function create_reminders_table($charset_collate = '') {
+
+        if (class_exists('NGUK_Reminders')) {
+            NGUK_Reminders::create_table($charset_collate);
+        }
 
     }
 
