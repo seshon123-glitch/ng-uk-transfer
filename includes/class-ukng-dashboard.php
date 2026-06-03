@@ -180,7 +180,7 @@ class UKNG_Dashboard {
         $qr_url = self::qr_code_url(
             array(
                 'Transaction ID: ' . $receipt_number,
-                'Customer: ' . $transaction->customer_name,
+                'Customer: ' . strtoupper($transaction->customer_name),
                 'Amount: GBP ' . number_format($transaction->total_paid, 2),
                 'Status: ' . $transaction->status
             )
@@ -268,12 +268,12 @@ class UKNG_Dashboard {
             <div class="ukng-receipt-grid">
                 <div class="ukng-receipt-box">
                     <h2>Sender Details</h2>
-                    <p><strong>Customer</strong><br><?php echo esc_html($transaction->customer_name); ?></p>
+                    <p><strong>Customer</strong><br><?php echo esc_html(strtoupper($transaction->customer_name)); ?></p>
                     <p><strong>Amount Paid By Customer</strong><br>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></p>
                 </div>
                 <div class="ukng-receipt-box">
                     <h2>Beneficiary Details</h2>
-                    <p><strong>Beneficiary</strong><br><?php echo esc_html($transaction->beneficiary_name); ?></p>
+                    <p><strong>Beneficiary</strong><br><?php echo esc_html(strtoupper($transaction->beneficiary_name)); ?></p>
                     <p><strong>Bank Details</strong><br><?php echo nl2br(esc_html($transaction->beneficiary_bank_details)); ?></p>
                 </div>
             </div>
@@ -426,7 +426,7 @@ class UKNG_Dashboard {
             $wpdb->insert(
                 $customers_table,
                 array(
-                    'customer_name' => sanitize_text_field($_POST['customer_name']),
+                    'customer_name' => strtoupper(sanitize_text_field($_POST['customer_name'])),
                     'phone_number' => sanitize_text_field($_POST['phone_number']),
                     'email' => sanitize_email($_POST['email']),
                     'address' => sanitize_textarea_field($_POST['address']),
@@ -456,9 +456,9 @@ class UKNG_Dashboard {
                 $beneficiaries_table,
                 array(
                     'customer_id' => intval($_POST['customer_id']),
-                    'beneficiary_name' => sanitize_text_field($_POST['beneficiary_name']),
+                    'beneficiary_name' => strtoupper(sanitize_text_field($_POST['beneficiary_name'])),
                     'bank_name' => sanitize_text_field($_POST['bank_name']),
-                    'account_name' => sanitize_text_field($_POST['account_name']),
+                    'account_name' => strtoupper(sanitize_text_field($_POST['beneficiary_name'])),
                     'account_number' => sanitize_text_field($_POST['account_number']),
                     'notes' => sanitize_textarea_field($_POST['notes'])
                 )
@@ -539,19 +539,53 @@ class UKNG_Dashboard {
                     array_filter(
                         array(
                             $beneficiary->bank_name,
-                            $beneficiary->account_name,
                             $beneficiary->account_number
                         )
                     )
                 );
+
+                if (!isset($_POST['ukng_confirm_transaction'])) {
+                    ?>
+                    <div class="wrap">
+                        <h1>Confirm UK to Nigeria Transaction</h1>
+                        <div style="background:#fff;padding:25px;border-radius:12px;margin-top:25px;max-width:900px;">
+                            <h2>Transaction Preview</h2>
+                            <table class="widefat striped">
+                                <tbody>
+                                    <tr><th>Customer</th><td><?php echo esc_html(strtoupper($customer->customer_name)); ?></td></tr>
+                                    <tr><th>Beneficiary</th><td><?php echo esc_html(strtoupper($beneficiary->beneficiary_name)); ?></td></tr>
+                                    <tr><th>Beneficiary Bank Details</th><td><?php echo nl2br(esc_html($beneficiary_bank_details)); ?></td></tr>
+                                    <tr><th>Pounds Sent</th><td>GBP <?php echo esc_html(number_format($pounds_sent, 2)); ?></td></tr>
+                                    <tr><th>Commission / Profit</th><td>GBP <?php echo esc_html(number_format($commission, 2)); ?></td></tr>
+                                    <tr><th>Total Paid</th><td>GBP <?php echo esc_html(number_format($total_paid, 2)); ?></td></tr>
+                                    <tr><th>Exchange Rate</th><td>NGN <?php echo esc_html(number_format($exchange_rate, 2)); ?></td></tr>
+                                    <tr><th>Beneficiary Gets</th><td>NGN <?php echo esc_html(number_format($naira_amount, 2)); ?></td></tr>
+                                    <tr><th>Status</th><td>Pending</td></tr>
+                                </tbody>
+                            </table>
+
+                            <form method="post" style="margin-top:20px;">
+                                <input type="hidden" name="ukng_view" value="payments">
+                                <input type="hidden" name="customer_id" value="<?php echo intval($customer_id); ?>">
+                                <input type="hidden" name="beneficiary_id" value="<?php echo intval($beneficiary_id); ?>">
+                                <input type="hidden" name="pounds_sent" value="<?php echo esc_attr($pounds_sent); ?>">
+                                <input type="hidden" name="ukng_confirm_transaction" value="1">
+                                <input type="submit" name="ukng_create_transaction" class="button button-primary" value="Confirm Transaction">
+                                <button type="button" onclick="history.back();" class="button">Cancel / Edit</button>
+                            </form>
+                        </div>
+                    </div>
+                    <?php
+                    return;
+                }
 
                 $inserted = $wpdb->insert(
                     $transactions_table,
                     array(
                         'customer_id' => $customer->id,
                         'beneficiary_id' => $beneficiary->id,
-                        'customer_name' => $customer->customer_name,
-                        'beneficiary_name' => $beneficiary->beneficiary_name,
+                        'customer_name' => strtoupper($customer->customer_name),
+                        'beneficiary_name' => strtoupper($beneficiary->beneficiary_name),
                         'pounds_sent' => $pounds_sent,
                         'commission_amount' => $commission,
                         'total_paid' => $total_paid,
@@ -812,10 +846,20 @@ class UKNG_Dashboard {
                 .ukng-rate-panel label{display:block;font-weight:800;color:#334155;margin-bottom:6px}
                 .ukng-search-form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 18px}
                 .ukng-search-form input[type="search"]{min-width:280px;max-width:100%;width:360px}
+                .ukng-name-strong{color:#020617;font-weight:900;text-transform:uppercase}
+                .ukng-transaction-table td{color:#020617;font-weight:800}
+                .ukng-transaction-table td:nth-child(2),
+                .ukng-transaction-table td:nth-child(3),
+                .ukng-transaction-table td:nth-child(5),
+                .ukng-transaction-table td:nth-child(6),
+                .ukng-transaction-table td:nth-child(7),
+                .ukng-transaction-table td:nth-child(8),
+                .ukng-transaction-table td:nth-child(9){font-weight:900}
                 .ukng-dashboard-dark{background:#0f172a;color:#e5e7eb;padding:20px;border-radius:14px}
                 .ukng-dashboard-dark .ukng-panel,.ukng-dashboard-dark .ukng-nav,.ukng-dashboard-dark .ukng-rate-panel,.ukng-dashboard-dark .ukng-card{background:#111827;border-color:#334155;color:#e5e7eb}
                 .ukng-dashboard-dark h1,.ukng-dashboard-dark h2,.ukng-dashboard-dark h3,.ukng-dashboard-dark p,.ukng-dashboard-dark th,.ukng-dashboard-dark td,.ukng-dashboard-dark label{color:#e5e7eb}
                 .ukng-dashboard-dark .widefat,.ukng-dashboard-dark .widefat td,.ukng-dashboard-dark .widefat th{background:#111827;color:#e5e7eb;border-color:#334155}
+                .ukng-dashboard-dark .ukng-name-strong,.ukng-dashboard-dark .ukng-transaction-table td{color:#e5e7eb}
                 .ukng-dashboard-dark input,.ukng-dashboard-dark select,.ukng-dashboard-dark textarea{background:#020617!important;color:#e5e7eb!important;border-color:#475569!important}
                 @media(max-width:900px){.ukng-grid{grid-template-columns:1fr}.ukng-hero{display:block}}
             </style>
@@ -864,7 +908,7 @@ class UKNG_Dashboard {
                                     <option value="">Select Customer</option>
                                     <?php foreach ($all_customers as $customer) { ?>
                                         <option value="<?php echo intval($customer->id); ?>" <?php selected(isset($_GET['customer_id']) ? intval($_GET['customer_id']) : 0, $customer->id); ?>>
-                                            <?php echo esc_html($customer->customer_name); ?>
+                                            <?php echo esc_html(strtoupper($customer->customer_name)); ?>
                                         </option>
                                     <?php } ?>
                                 </select>
@@ -879,7 +923,7 @@ class UKNG_Dashboard {
                                         <option value="<?php echo intval($beneficiary->id); ?>"
                                                 data-customer-id="<?php echo intval($beneficiary->customer_id); ?>"
                                                 <?php selected(isset($_GET['beneficiary_id']) ? intval($_GET['beneficiary_id']) : 0, $beneficiary->id); ?>>
-                                            <?php echo esc_html($beneficiary->beneficiary_name . ' - ' . $beneficiary->bank_name); ?>
+                                            <?php echo esc_html(strtoupper($beneficiary->beneficiary_name) . ' - ' . $beneficiary->bank_name); ?>
                                         </option>
                                     <?php } ?>
                                 </select>
@@ -939,12 +983,14 @@ class UKNG_Dashboard {
                 <?php } ?>
 
                 <table class="widefat striped">
-                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th><th>Delete</th></tr></thead>
+                    <thead><tr><th>No.</th><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th><th>Delete</th></tr></thead>
                     <tbody>
                         <?php if ($customers) { ?>
+                            <?php $customer_count = 1; ?>
                             <?php foreach ($customers as $customer) { ?>
                                 <tr>
-                                    <td><?php echo esc_html($customer->customer_name); ?></td>
+                                    <td><?php echo esc_html($customer_count++); ?></td>
+                                    <td class="ukng-name-strong"><?php echo esc_html(strtoupper($customer->customer_name)); ?></td>
                                     <td><?php echo esc_html($customer->phone_number); ?></td>
                                     <td><?php echo esc_html($customer->email); ?></td>
                                     <td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td>
@@ -961,7 +1007,7 @@ class UKNG_Dashboard {
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="6">No UK-Nigeria customers found.</td></tr>
+                            <tr><td colspan="7">No UK-Nigeria customers found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>
@@ -983,7 +1029,7 @@ class UKNG_Dashboard {
                     <?php } ?>
                 </form>
 
-                <table class="widefat striped">
+                <table class="widefat striped ukng-transaction-table">
                     <thead>
                         <tr>
                             <th>No.</th><th>Transaction ID</th><th>Customer</th><th>Phone</th><th>Beneficiary</th><th>Pounds</th><th>Commission</th><th>Total Paid</th><th>Naira</th><th>Status</th><th>Actions</th>
@@ -995,9 +1041,9 @@ class UKNG_Dashboard {
                                 <tr>
                                     <td><?php echo $count++; ?></td>
                                     <td><?php echo esc_html('UKNG' . (9000 + intval($transaction->id))); ?></td>
-                                    <td><?php echo esc_html($transaction->customer_name); ?></td>
+                                    <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
                                     <td><?php echo esc_html(isset($transaction->customer_phone) ? $transaction->customer_phone : ''); ?></td>
-                                    <td><?php echo esc_html($transaction->beneficiary_name); ?></td>
+                                    <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->beneficiary_name)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->pounds_sent, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->commission_amount, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
@@ -1049,7 +1095,7 @@ class UKNG_Dashboard {
                                 $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
                                 ?>
                                 <tr>
-                                    <td><?php echo esc_html($transaction->customer_name); ?></td>
+                                    <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($amount_paid, 2)); ?></td>
                                     <td>GBP <?php echo esc_html(number_format($remaining_balance, 2)); ?></td>
@@ -1254,7 +1300,7 @@ class UKNG_Dashboard {
             <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers')); ?>">Back to UK-Nigeria Dashboard</a></p>
 
             <table class="widefat striped" style="max-width:900px;">
-                <tr><th>Name</th><td><?php echo esc_html($customer->customer_name); ?></td></tr>
+                <tr><th>Name</th><td class="ukng-name-strong"><?php echo esc_html(strtoupper($customer->customer_name)); ?></td></tr>
                 <tr><th>Phone</th><td><?php echo esc_html($customer->phone_number); ?></td></tr>
                 <tr><th>Email</th><td><?php echo esc_html($customer->email); ?></td></tr>
                 <tr><th>Address</th><td><?php echo esc_html($customer->address); ?></td></tr>
@@ -1268,9 +1314,41 @@ class UKNG_Dashboard {
             <form method="post">
                 <input type="hidden" name="customer_id" value="<?php echo intval($customer->id); ?>">
                 <table class="form-table">
-                    <tr><th>Beneficiary Name</th><td><input type="text" name="beneficiary_name" required></td></tr>
-                    <tr><th>Bank Name</th><td><input type="text" name="bank_name" required></td></tr>
-                    <tr><th>Account Name</th><td><input type="text" name="account_name" required></td></tr>
+                    <tr><th>Beneficiary / Account Holder Name</th><td><input type="text" name="beneficiary_name" required></td></tr>
+                    <tr>
+                        <th>Bank Name</th>
+                        <td>
+                            <select id="ukng_nigeria_bank_select"
+                                    name="bank_name"
+                                    class="regular-text ukng-bank-select"
+                                    style="width:100%;max-width:360px;"
+                                    required>
+                                <option value="">Select Nigerian bank</option>
+                                <option value="Access Bank">Access Bank</option>
+                                <option value="Ecobank">Ecobank</option>
+                                <option value="FCMB">FCMB</option>
+                                <option value="Fidelity Bank">Fidelity Bank</option>
+                                <option value="First Bank">First Bank</option>
+                                <option value="GTBank">GTBank</option>
+                                <option value="Keystone Bank">Keystone Bank</option>
+                                <option value="Kuda Bank">Kuda Bank</option>
+                                <option value="Moniepoint">Moniepoint</option>
+                                <option value="Opay">Opay</option>
+                                <option value="PalmPay">PalmPay</option>
+                                <option value="Polaris Bank">Polaris Bank</option>
+                                <option value="PremiumTrust Bank">PremiumTrust Bank</option>
+                                <option value="Providus Bank">Providus Bank</option>
+                                <option value="Stanbic IBTC">Stanbic IBTC</option>
+                                <option value="Sterling Bank">Sterling Bank</option>
+                                <option value="Titan Trust Bank">Titan Trust Bank</option>
+                                <option value="UBA">UBA</option>
+                                <option value="Union Bank">Union Bank</option>
+                                <option value="Unity Bank">Unity Bank</option>
+                                <option value="Wema Bank">Wema Bank</option>
+                                <option value="Zenith Bank">Zenith Bank</option>
+                            </select>
+                        </td>
+                    </tr>
                     <tr><th>Account Number</th><td><input type="text" name="account_number" required></td></tr>
                     <tr><th>Notes</th><td><textarea name="notes" class="large-text"></textarea></td></tr>
                 </table>
@@ -1279,14 +1357,13 @@ class UKNG_Dashboard {
 
             <h2>Registered Beneficiaries</h2>
             <table class="widefat striped">
-                <thead><tr><th>Name</th><th>Bank</th><th>Account Name</th><th>Account Number</th><th>Action</th></tr></thead>
+                <thead><tr><th>Beneficiary / Account Holder</th><th>Bank</th><th>Account Number</th><th>Action</th></tr></thead>
                 <tbody>
                     <?php if ($beneficiaries) { ?>
                         <?php foreach ($beneficiaries as $beneficiary) { ?>
                             <tr>
-                                <td><?php echo esc_html($beneficiary->beneficiary_name); ?></td>
+                                <td class="ukng-name-strong"><?php echo esc_html(strtoupper($beneficiary->beneficiary_name)); ?></td>
                                 <td><?php echo esc_html($beneficiary->bank_name); ?></td>
-                                <td><?php echo esc_html($beneficiary->account_name); ?></td>
                                 <td><?php echo esc_html($beneficiary->account_number); ?></td>
                                 <td>
                                     <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=payments&customer_id=' . intval($customer->id) . '&beneficiary_id=' . intval($beneficiary->id))); ?>">
@@ -1296,7 +1373,7 @@ class UKNG_Dashboard {
                             </tr>
                         <?php } ?>
                     <?php } else { ?>
-                        <tr><td colspan="5">No beneficiaries found for this customer.</td></tr>
+                        <tr><td colspan="4">No beneficiaries found for this customer.</td></tr>
                     <?php } ?>
                 </tbody>
             </table>

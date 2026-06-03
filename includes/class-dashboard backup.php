@@ -325,10 +325,37 @@ $business_address = get_option('nguk_business_address');
     <th>Bank Name</th>
 
     <td>
-        <input type="text"
-               name="bank_name"
-               class="regular-text"
-               required>
+        <input type="search"
+               class="regular-text nguk-bank-search"
+               data-target="nguk_backup_uk_bank_select"
+               placeholder="Search UK bank">
+        <br>
+        <select id="nguk_backup_uk_bank_select"
+                name="bank_name"
+                class="regular-text nguk-bank-select"
+                required>
+            <option value="">Select UK bank</option>
+            <option value="Bank of Scotland">Bank of Scotland</option>
+            <option value="Barclays">Barclays</option>
+            <option value="Chase UK">Chase UK</option>
+            <option value="Clydesdale Bank">Clydesdale Bank</option>
+            <option value="Co-operative Bank">Co-operative Bank</option>
+            <option value="First Direct">First Direct</option>
+            <option value="Halifax">Halifax</option>
+            <option value="HSBC">HSBC</option>
+            <option value="Lloyds Bank">Lloyds Bank</option>
+            <option value="Metro Bank">Metro Bank</option>
+            <option value="Monzo">Monzo</option>
+            <option value="Nationwide">Nationwide</option>
+            <option value="NatWest">NatWest</option>
+            <option value="Revolut">Revolut</option>
+            <option value="Royal Bank of Scotland (RBS)">Royal Bank of Scotland (RBS)</option>
+            <option value="Santander">Santander</option>
+            <option value="Starling Bank">Starling Bank</option>
+            <option value="TSB">TSB</option>
+            <option value="Virgin Money">Virgin Money</option>
+            <option value="Yorkshire Bank">Yorkshire Bank</option>
+        </select>
     </td>
 </tr>
 
@@ -385,6 +412,45 @@ $business_address = get_option('nguk_business_address');
 </p>
 
 </form>
+<script>
+(function(){
+    function enhanceBankSearch(input){
+        var select = document.getElementById(input.getAttribute('data-target'));
+        if(!select){
+            return;
+        }
+
+        var options = Array.prototype.slice.call(select.options);
+
+        input.addEventListener('input', function(){
+            var query = input.value.toLowerCase();
+            var firstMatch = null;
+
+            options.forEach(function(option){
+                if(option.value === ''){
+                    option.hidden = false;
+                    return;
+                }
+
+                var matched = option.text.toLowerCase().indexOf(query) !== -1;
+                option.hidden = !matched;
+
+                if(matched && !firstMatch){
+                    firstMatch = option;
+                }
+            });
+
+            if(firstMatch){
+                select.value = firstMatch.value;
+            } else if(query !== ''){
+                select.value = '';
+            }
+        });
+    }
+
+    document.querySelectorAll('.nguk-bank-search').forEach(enhanceBankSearch);
+})();
+</script>
 <hr style="margin:40px 0;">
 
 <h2>Saved Beneficiaries</h2>

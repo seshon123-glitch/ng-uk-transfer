@@ -282,7 +282,6 @@ class NGUK_Dashboard {
                         array_filter(
                             array(
                                 $receipt_beneficiary->bank_name,
-                                $receipt_beneficiary->account_name,
                                 $receipt_beneficiary->account_number,
                                 $receipt_beneficiary->sort_code
                             )
@@ -311,8 +310,8 @@ class NGUK_Dashboard {
             '',
             'Invoice: ' . $receipt_invoice_number,
             'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
-            'Customer: ' . $transaction->customer_name,
-            'Beneficiary: ' . $transaction->beneficiary_name,
+            'Customer: ' . strtoupper($transaction->customer_name),
+            'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
             '',
             'Nigeria Bank Details:',
             $transaction->nigeria_bank_details,
@@ -467,7 +466,6 @@ class NGUK_Dashboard {
                             array_filter(
                                 array(
                                     $receipt_beneficiary->bank_name,
-                                    $receipt_beneficiary->account_name,
                                     $receipt_beneficiary->account_number,
                                     $receipt_beneficiary->sort_code
                                 )
@@ -496,8 +494,8 @@ class NGUK_Dashboard {
                 '',
                 'Invoice: ' . $receipt_invoice_number,
                 'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
-                'Customer: ' . $transaction->customer_name,
-                'Beneficiary: ' . $transaction->beneficiary_name,
+                'Customer: ' . strtoupper($transaction->customer_name),
+                'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
                 '',
                 'Nigeria Bank Details:',
                 $transaction->nigeria_bank_details,
@@ -919,7 +917,6 @@ if (empty($receipt_uk_bank_details)) {
                 array_filter(
                     array(
                         $receipt_beneficiary->bank_name,
-                        $receipt_beneficiary->account_name,
                         $receipt_beneficiary->account_number,
                         $receipt_beneficiary->sort_code
                     )
@@ -948,7 +945,7 @@ $receipt_share_text = implode(
         'Transaction Receipt',
         'Invoice: ' . $receipt_invoice_number,
         'Business: ' . $business_name,
-        'Customer: ' . $transaction->customer_name,
+        'Customer: ' . strtoupper($transaction->customer_name),
         'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
         'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
         'Buy Rate: ' . number_format($transaction->buy_rate, 2),
@@ -970,7 +967,7 @@ $email_receipt_url = 'mailto:?subject=' . rawurlencode(
 $receipt_qr_url = self::qr_code_url(
     array(
         'Transaction ID: ' . $receipt_invoice_number,
-        'Customer: ' . $transaction->customer_name,
+        'Customer: ' . strtoupper($transaction->customer_name),
         'Amount: GBP ' . number_format($receipt_pounds_sent, 2),
         'Status: ' . $transaction->status
     )
@@ -986,8 +983,8 @@ $download_receipt_lines = array(
     '',
     'Invoice: ' . $receipt_invoice_number,
     'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
-    'Customer: ' . $transaction->customer_name,
-    'Beneficiary: ' . $transaction->beneficiary_name,
+        'Customer: ' . strtoupper($transaction->customer_name),
+        'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
     '',
     'Nigeria Bank Details:',
     $transaction->nigeria_bank_details,
@@ -1054,7 +1051,7 @@ margin-bottom:30px;
 
         <p>
             <strong>Customer:</strong><br>
-            <?php echo esc_html($transaction->customer_name); ?>
+            <?php echo esc_html(strtoupper($transaction->customer_name)); ?>
         </p>
 
         <p>
@@ -1321,11 +1318,11 @@ if (isset($_POST['save_beneficiary'])) {
 
             'customer_id' => intval($_POST['customer_id']),
 
-            'beneficiary_name' => sanitize_text_field($_POST['beneficiary_name']),
+            'beneficiary_name' => strtoupper(sanitize_text_field($_POST['beneficiary_name'])),
 
             'bank_name' => sanitize_text_field($_POST['bank_name']),
 
-            'account_name' => sanitize_text_field($_POST['account_name']),
+            'account_name' => strtoupper(sanitize_text_field($_POST['beneficiary_name'])),
 
             'account_number' => sanitize_text_field($_POST['account_number']),
 
@@ -1358,7 +1355,7 @@ if (isset($_POST['save_customer'])) {
 
         array(
 
-            'customer_name' => sanitize_text_field($_POST['customer_name']),
+            'customer_name' => strtoupper(sanitize_text_field($_POST['customer_name'])),
 
             'phone_number' => sanitize_text_field($_POST['phone_number']),
 
@@ -1507,7 +1504,7 @@ $business_address = get_option('nguk_business_address');
 
                         <tr>
                             <th>Customer Name</th>
-                            <td><?php echo esc_html($customer->customer_name); ?></td>
+                            <td class="nguk-name-strong"><?php echo esc_html(strtoupper($customer->customer_name)); ?></td>
                         </tr>
 
                         <tr>
@@ -1554,7 +1551,7 @@ $business_address = get_option('nguk_business_address');
 <table class="form-table">
 
 <tr>
-    <th>Beneficiary Name</th>
+    <th>Beneficiary / Account Holder Name</th>
 
     <td>
         <input type="text"
@@ -1568,21 +1565,37 @@ $business_address = get_option('nguk_business_address');
     <th>Bank Name</th>
 
     <td>
-        <input type="text"
-               name="bank_name"
-               class="regular-text"
-               required>
-    </td>
-</tr>
-
-<tr>
-    <th>Account Name</th>
-
-    <td>
-        <input type="text"
-               name="account_name"
-               class="regular-text"
-               required>
+        <input type="search"
+               class="regular-text nguk-bank-search"
+               data-target="nguk_uk_bank_select"
+               placeholder="Search UK bank">
+        <br>
+        <select id="nguk_uk_bank_select"
+                name="bank_name"
+                class="regular-text nguk-bank-select"
+                required>
+            <option value="">Select UK bank</option>
+            <option value="Bank of Scotland">Bank of Scotland</option>
+            <option value="Barclays">Barclays</option>
+            <option value="Chase UK">Chase UK</option>
+            <option value="Clydesdale Bank">Clydesdale Bank</option>
+            <option value="Co-operative Bank">Co-operative Bank</option>
+            <option value="First Direct">First Direct</option>
+            <option value="Halifax">Halifax</option>
+            <option value="HSBC">HSBC</option>
+            <option value="Lloyds Bank">Lloyds Bank</option>
+            <option value="Metro Bank">Metro Bank</option>
+            <option value="Monzo">Monzo</option>
+            <option value="Nationwide">Nationwide</option>
+            <option value="NatWest">NatWest</option>
+            <option value="Revolut">Revolut</option>
+            <option value="Royal Bank of Scotland (RBS)">Royal Bank of Scotland (RBS)</option>
+            <option value="Santander">Santander</option>
+            <option value="Starling Bank">Starling Bank</option>
+            <option value="TSB">TSB</option>
+            <option value="Virgin Money">Virgin Money</option>
+            <option value="Yorkshire Bank">Yorkshire Bank</option>
+        </select>
     </td>
 </tr>
 
@@ -1628,6 +1641,45 @@ $business_address = get_option('nguk_business_address');
 </p>
 
 </form>
+<script>
+(function(){
+    function enhanceBankSearch(input){
+        var select = document.getElementById(input.getAttribute('data-target'));
+        if(!select){
+            return;
+        }
+
+        var options = Array.prototype.slice.call(select.options);
+
+        input.addEventListener('input', function(){
+            var query = input.value.toLowerCase();
+            var firstMatch = null;
+
+            options.forEach(function(option){
+                if(option.value === ''){
+                    option.hidden = false;
+                    return;
+                }
+
+                var matched = option.text.toLowerCase().indexOf(query) !== -1;
+                option.hidden = !matched;
+
+                if(matched && !firstMatch){
+                    firstMatch = option;
+                }
+            });
+
+            if(firstMatch){
+                select.value = firstMatch.value;
+            } else if(query !== ''){
+                select.value = '';
+            }
+        });
+    }
+
+    document.querySelectorAll('.nguk-bank-search').forEach(enhanceBankSearch);
+})();
+</script>
 <hr style="margin:40px 0;">
 
 <h2>Saved Beneficiaries</h2>
@@ -1660,11 +1712,9 @@ if ($beneficiaries) {
 
 <tr>
 
-<th>Name</th>
+<th>Beneficiary / Account Holder</th>
 
 <th>Bank</th>
-
-<th>Account Name</th>
 
 <th>Account Number</th>
 
@@ -1682,15 +1732,11 @@ if ($beneficiaries) {
 <tr>
 
 <td>
-<?php echo esc_html($beneficiary->beneficiary_name); ?>
+<span class="nguk-name-strong"><?php echo esc_html(strtoupper($beneficiary->beneficiary_name)); ?></span>
 </td>
 
 <td>
 <?php echo esc_html($beneficiary->bank_name); ?>
-</td>
-
-<td>
-<?php echo esc_html($beneficiary->account_name); ?>
 </td>
 
 <td>
@@ -1864,9 +1910,8 @@ if (isset($_GET['delete_bank_account'])) {
     }
     if ($sell_rate > 0 && $buy_rate > 0) {
 
-        $profit = abs(
-            ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate)
-        );
+        $profit =
+            ($naira_amount / $sell_rate) - ($naira_amount / $buy_rate);
 
     } else {
 
@@ -1898,7 +1943,7 @@ if (isset($_GET['delete_bank_account'])) {
 
     } else {
 
-    $customer_name = $customer->customer_name;
+$customer_name = strtoupper($customer->customer_name);
     $nigeria_bank = sanitize_textarea_field($_POST['nigeria_bank_details']);
 
     $uk_bank = implode(
@@ -1906,7 +1951,6 @@ if (isset($_GET['delete_bank_account'])) {
         array_filter(
             array(
                 $beneficiary->bank_name,
-                $beneficiary->account_name,
                 $beneficiary->account_number,
                 $beneficiary->sort_code
             )
@@ -1925,18 +1969,18 @@ if (isset($_GET['delete_bank_account'])) {
 
                 <h2>Transaction Preview</h2>
 
-                <table class="widefat striped">
+                <table class="widefat striped nguk-transaction-table">
 
                     <tbody>
 
                         <tr>
                             <th>Customer</th>
-                            <td><?php echo esc_html($customer_name); ?></td>
+                            <td class="nguk-name-strong"><?php echo esc_html(strtoupper($customer_name)); ?></td>
                         </tr>
 
                         <tr>
                             <th>Beneficiary</th>
-                            <td><?php echo esc_html($beneficiary->beneficiary_name); ?></td>
+                            <td class="nguk-name-strong"><?php echo esc_html(strtoupper($beneficiary->beneficiary_name)); ?></td>
                         </tr>
 
                         <tr>
@@ -2027,7 +2071,7 @@ if (isset($_GET['delete_bank_account'])) {
 
             'customer_name' => $customer_name,
 
-            'beneficiary_name' => $beneficiary->beneficiary_name,
+            'beneficiary_name' => strtoupper($beneficiary->beneficiary_name),
 
             'naira_amount' => $naira_amount,
 
@@ -2723,6 +2767,24 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     background:#f8fafc;
                 }
 
+                .nguk-name-strong {
+                    color:#020617;
+                    font-weight:900;
+                    text-transform:uppercase;
+                }
+
+                .nguk-transaction-table td {
+                    color:#020617;
+                    font-weight:800;
+                }
+
+                .nguk-transaction-table td:nth-child(2),
+                .nguk-transaction-table td:nth-child(3),
+                .nguk-transaction-table td:nth-child(4),
+                .nguk-transaction-table td:nth-child(5) {
+                    font-weight:900;
+                }
+
                 .nguk-dashboard-dark {
                     background:#0f172a;
                     color:#e5e7eb;
@@ -2757,6 +2819,11 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     background:#111827 !important;
                     color:#e5e7eb !important;
                     border-color:#334155 !important;
+                }
+
+                .nguk-dashboard-dark .nguk-name-strong,
+                .nguk-dashboard-dark .nguk-transaction-table td {
+                    color:#e5e7eb !important;
                 }
 
                 .nguk-dashboard-dark .widefat tbody tr:nth-child(even),
@@ -3206,7 +3273,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                              style="background:#f6f7f7;border-left:4px solid #2271b1;padding:15px;margin:15px 0;">
 
                             <h3 style="margin-top:0;">
-                                Note / Risk Assessment for <?php echo esc_html($note_customer->customer_name); ?>
+                                Note / Risk Assessment for <?php echo esc_html(strtoupper($note_customer->customer_name)); ?>
                             </h3>
 
                             <p style="white-space:pre-wrap;margin-bottom:0;">
@@ -3334,7 +3401,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                                 <td><?php echo $count++; ?></td>
 
                                 <td>
-                                    <?php echo esc_html($customer->customer_name); ?>
+                                    <?php echo esc_html(strtoupper($customer->customer_name)); ?>
                                 </td>
 
                                 <td>
@@ -3676,7 +3743,7 @@ if ($customers) {
                                <option value="<?php echo $customer->id; ?>"
 <?php selected($selected_customer_id, $customer->id); ?>>
 
-                                    <?php echo esc_html($customer->customer_name); ?>
+                                    <?php echo esc_html(strtoupper($customer->customer_name)); ?>
 
                                 </option>
 
@@ -3734,8 +3801,6 @@ data-customer-id="<?php echo $beneficiary->customer_id; ?>"
 
 data-bank="<?php echo esc_attr($beneficiary->bank_name); ?>"
 
-data-account-name="<?php echo esc_attr($beneficiary->account_name); ?>"
-
 data-account-number="<?php echo esc_attr($beneficiary->account_number); ?>"
 
 data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
@@ -3746,7 +3811,7 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
 
             <?php
             echo esc_html(
-                $beneficiary->beneficiary_name .
+                strtoupper($beneficiary->beneficiary_name) .
                 ' - ' .
                 $beneficiary->bank_name
             );
@@ -3892,7 +3957,7 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                     <?php echo esc_html(number_format(intval($nguk_transaction_count))); ?>
                 </p>
 
-                <table class="widefat striped">
+                <table class="widefat striped nguk-transaction-table">
 
                     <thead>
                         <tr>
@@ -4009,7 +4074,7 @@ if ($transactions) {
             <td><?php echo $count++; ?></td>
 
             <td>
-                <?php echo esc_html($transaction->customer_name); ?>
+                <span class="nguk-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></span>
             </td>
 
             <td>
@@ -4357,7 +4422,6 @@ jQuery(document).ready(function($){
 
         return [
             bank,
-            option.data('account-name'),
             option.data('account-number'),
             option.data('sort-code')
         ].filter(Boolean).join("\n");
