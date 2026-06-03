@@ -2742,6 +2742,18 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                     text-transform:uppercase;
                 }
 
+                .nguk-customers-table td,
+                .nguk-customers-table th {
+                    color:#020617 !important;
+                    font-weight:900 !important;
+                }
+
+                .nguk-customers-table td:nth-child(2) {
+                    color:#020617 !important;
+                    font-weight:950 !important;
+                    text-transform:uppercase;
+                }
+
                 .nguk-transaction-table td {
                     color:#020617;
                     font-weight:800;
@@ -3294,7 +3306,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                 </form>
 
-                <table class="widefat striped">
+                <table class="widefat striped nguk-customers-table">
 
                     <thead>
                         <tr>

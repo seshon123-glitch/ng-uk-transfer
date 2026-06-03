@@ -874,11 +874,13 @@ class UKNG_Dashboard {
                 .ukng-panel.is-active{display:block}
                 .ukng-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
                 .ukng-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px}
-                .ukng-card span{display:block;color:#64748b;font-weight:800;text-transform:uppercase;font-size:12px}
-                .ukng-card strong{display:block;margin-top:8px;font-size:24px;color:#0f172a}
+                .ukng-card span{display:block;color:#020617;font-weight:900;text-transform:uppercase;font-size:12px}
+                .ukng-card strong{display:block;margin-top:8px;font-size:30px;color:#020617;font-weight:900}
+                .ukng-card p,.ukng-card div{color:#020617;font-weight:900}
                 .ukng-dashboard input,.ukng-dashboard select,.ukng-dashboard textarea{border-radius:8px!important;min-height:40px}
                 .ukng-rate-panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:22px;margin-top:18px;display:flex;justify-content:space-between;gap:18px;align-items:center;box-shadow:0 10px 26px rgba(15,23,42,.06)}
-                .ukng-rate-panel strong{display:block;font-size:40px;line-height:1;color:#12372a;margin-top:6px}
+                .ukng-rate-panel span{color:#020617;font-weight:900}
+                .ukng-rate-panel strong{display:block;font-size:46px;line-height:1;color:#020617;margin-top:8px;font-weight:900}
                 .ukng-rate-panel form{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
                 .ukng-rate-panel label{display:block;font-weight:800;color:#334155;margin-bottom:6px}
                 .ukng-search-form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 18px}
