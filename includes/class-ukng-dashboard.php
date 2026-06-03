@@ -690,6 +690,23 @@ class UKNG_Dashboard {
         $transaction_search = isset($_GET['ukng_transaction_search'])
             ? sanitize_text_field(wp_unslash($_GET['ukng_transaction_search']))
             : '';
+        $transaction_from_date = isset($_GET['ukng_transaction_from_date'])
+            ? sanitize_text_field(wp_unslash($_GET['ukng_transaction_from_date']))
+            : '';
+        $transaction_to_date = isset($_GET['ukng_transaction_to_date'])
+            ? sanitize_text_field(wp_unslash($_GET['ukng_transaction_to_date']))
+            : '';
+        $transaction_quick_date = isset($_GET['ukng_transaction_quick_date'])
+            ? sanitize_key(wp_unslash($_GET['ukng_transaction_quick_date']))
+            : '';
+
+        if ($transaction_quick_date === 'today') {
+            $transaction_from_date = current_time('Y-m-d');
+            $transaction_to_date = current_time('Y-m-d');
+        } elseif ($transaction_quick_date === 'yesterday') {
+            $transaction_from_date = date('Y-m-d', current_time('timestamp') - DAY_IN_SECONDS);
+            $transaction_to_date = $transaction_from_date;
+        }
 
         $all_customers = $wpdb->get_results("SELECT * FROM $customers_table ORDER BY customer_name ASC");
         $customers = $all_customers;
@@ -710,7 +727,10 @@ class UKNG_Dashboard {
 
         $beneficiaries = $wpdb->get_results("SELECT * FROM $beneficiaries_table ORDER BY beneficiary_name ASC");
 
-        if ($transaction_search !== '') {
+        $transaction_has_date_filter = preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_from_date)
+            || preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_to_date);
+
+        if ($transaction_search !== '' || $transaction_has_date_filter) {
             $transaction_like = '%' . $wpdb->esc_like($transaction_search) . '%';
             $transaction_id_search = preg_replace('/\D/', '', $transaction_search);
             $transaction_id = 0;
@@ -723,27 +743,44 @@ class UKNG_Dashboard {
                 }
             }
 
-            $transactions = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT t.*, c.phone_number AS customer_phone
-                     FROM $transactions_table t
-                     LEFT JOIN $customers_table c ON c.id = t.customer_id
-                     WHERE t.customer_name LIKE %s
-                        OR t.beneficiary_name LIKE %s
-                        OR c.phone_number LIKE %s
-                        OR t.tracking_code LIKE %s
-                        OR CONCAT('UKNG', t.id + 9000) LIKE %s
-                        OR t.id = %d
-                     ORDER BY t.id DESC
-                     LIMIT 50",
-                    $transaction_like,
-                    $transaction_like,
-                    $transaction_like,
-                    $transaction_like,
-                    $transaction_like,
-                    $transaction_id
-                )
-            );
+            $transaction_where = array('1=1');
+            $transaction_params = array();
+
+            if ($transaction_search !== '') {
+                $transaction_where[] = "(t.customer_name LIKE %s
+                    OR t.beneficiary_name LIKE %s
+                    OR c.phone_number LIKE %s
+                    OR t.tracking_code LIKE %s
+                    OR CONCAT('UKNG', t.id + 9000) LIKE %s
+                    OR t.id = %d)";
+                $transaction_params[] = $transaction_like;
+                $transaction_params[] = $transaction_like;
+                $transaction_params[] = $transaction_like;
+                $transaction_params[] = $transaction_like;
+                $transaction_params[] = $transaction_like;
+                $transaction_params[] = $transaction_id;
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_from_date)) {
+                $transaction_where[] = 't.created_at >= %s';
+                $transaction_params[] = $transaction_from_date . ' 00:00:00';
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_to_date)) {
+                $transaction_where[] = 't.created_at <= %s';
+                $transaction_params[] = $transaction_to_date . ' 23:59:59';
+            }
+
+            $transaction_sql = "SELECT t.*, c.phone_number AS customer_phone
+                 FROM $transactions_table t
+                 LEFT JOIN $customers_table c ON c.id = t.customer_id
+                 WHERE " . implode(' AND ', $transaction_where) . "
+                 ORDER BY t.id DESC
+                 LIMIT 50";
+
+            $transactions = $transaction_params
+                ? $wpdb->get_results($wpdb->prepare($transaction_sql, $transaction_params))
+                : $wpdb->get_results($transaction_sql);
         } else {
             $transactions = $wpdb->get_results(
                 "SELECT t.*, c.phone_number AS customer_phone
@@ -1023,8 +1060,28 @@ class UKNG_Dashboard {
                            name="ukng_transaction_search"
                            value="<?php echo esc_attr($transaction_search); ?>"
                            placeholder="Search by name, phone number, or transaction ID">
+                    <label>
+                        From Date
+                        <input type="date"
+                               name="ukng_transaction_from_date"
+                               value="<?php echo esc_attr($transaction_from_date); ?>">
+                    </label>
+                    <label>
+                        To Date
+                        <input type="date"
+                               name="ukng_transaction_to_date"
+                               value="<?php echo esc_attr($transaction_to_date); ?>">
+                    </label>
                     <input type="submit" class="button button-primary" value="Search">
-                    <?php if ($transaction_search !== '') { ?>
+                    <a class="button"
+                       href="<?php echo esc_url(add_query_arg(array('page' => 'nguk-transfer', 'ukng_view' => 'transactions', 'ukng_transaction_quick_date' => 'today', 'ukng_transaction_search' => $transaction_search), admin_url('admin.php'))); ?>">
+                        Today's Transactions
+                    </a>
+                    <a class="button"
+                       href="<?php echo esc_url(add_query_arg(array('page' => 'nguk-transfer', 'ukng_view' => 'transactions', 'ukng_transaction_quick_date' => 'yesterday', 'ukng_transaction_search' => $transaction_search), admin_url('admin.php'))); ?>">
+                        Yesterday's Transactions
+                    </a>
+                    <?php if ($transaction_search !== '' || $transaction_has_date_filter || $transaction_quick_date !== '') { ?>
                         <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=transactions')); ?>">Clear</a>
                     <?php } ?>
                 </form>
@@ -1318,34 +1375,44 @@ class UKNG_Dashboard {
                     <tr>
                         <th>Bank Name</th>
                         <td>
+                            <?php
+                            $ukng_nigerian_banks = array(
+                                'Access Bank',
+                                'Ecobank',
+                                'FCMB',
+                                'Fidelity Bank',
+                                'First Bank',
+                                'GTBank',
+                                'Keystone Bank',
+                                'Kuda Bank',
+                                'Moniepoint',
+                                'Opay',
+                                'PalmPay',
+                                'Polaris Bank',
+                                'PremiumTrust Bank',
+                                'Providus Bank',
+                                'Stanbic IBTC',
+                                'Sterling Bank',
+                                'Titan Trust Bank',
+                                'UBA',
+                                'Union Bank',
+                                'Unity Bank',
+                                'Wema Bank',
+                                'Zenith Bank'
+                            );
+                            $selected_bank_name = isset($_POST['bank_name']) ? sanitize_text_field($_POST['bank_name']) : '';
+                            ?>
                             <select id="ukng_nigeria_bank_select"
                                     name="bank_name"
                                     class="regular-text ukng-bank-select"
                                     style="width:100%;max-width:360px;"
                                     required>
                                 <option value="">Select Nigerian bank</option>
-                                <option value="Access Bank">Access Bank</option>
-                                <option value="Ecobank">Ecobank</option>
-                                <option value="FCMB">FCMB</option>
-                                <option value="Fidelity Bank">Fidelity Bank</option>
-                                <option value="First Bank">First Bank</option>
-                                <option value="GTBank">GTBank</option>
-                                <option value="Keystone Bank">Keystone Bank</option>
-                                <option value="Kuda Bank">Kuda Bank</option>
-                                <option value="Moniepoint">Moniepoint</option>
-                                <option value="Opay">Opay</option>
-                                <option value="PalmPay">PalmPay</option>
-                                <option value="Polaris Bank">Polaris Bank</option>
-                                <option value="PremiumTrust Bank">PremiumTrust Bank</option>
-                                <option value="Providus Bank">Providus Bank</option>
-                                <option value="Stanbic IBTC">Stanbic IBTC</option>
-                                <option value="Sterling Bank">Sterling Bank</option>
-                                <option value="Titan Trust Bank">Titan Trust Bank</option>
-                                <option value="UBA">UBA</option>
-                                <option value="Union Bank">Union Bank</option>
-                                <option value="Unity Bank">Unity Bank</option>
-                                <option value="Wema Bank">Wema Bank</option>
-                                <option value="Zenith Bank">Zenith Bank</option>
+                                <?php foreach ($ukng_nigerian_banks as $bank_name) { ?>
+                                    <option value="<?php echo esc_attr($bank_name); ?>" <?php selected($selected_bank_name, $bank_name); ?>>
+                                        <?php echo esc_html($bank_name); ?>
+                                    </option>
+                                <?php } ?>
                             </select>
                         </td>
                     </tr>

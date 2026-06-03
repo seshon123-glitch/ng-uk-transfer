@@ -1565,36 +1565,41 @@ $business_address = get_option('nguk_business_address');
     <th>Bank Name</th>
 
     <td>
-        <input type="search"
-               class="regular-text nguk-bank-search"
-               data-target="nguk_uk_bank_select"
-               placeholder="Search UK bank">
-        <br>
+        <?php
+        $nguk_uk_banks = array(
+            'Bank of Scotland',
+            'Barclays',
+            'Chase UK',
+            'Clydesdale Bank',
+            'Co-operative Bank',
+            'First Direct',
+            'Halifax',
+            'HSBC',
+            'Lloyds Bank',
+            'Metro Bank',
+            'Monzo',
+            'Nationwide',
+            'NatWest',
+            'Revolut',
+            'Royal Bank of Scotland (RBS)',
+            'Santander',
+            'Starling Bank',
+            'TSB',
+            'Virgin Money',
+            'Yorkshire Bank'
+        );
+        $selected_bank_name = isset($_POST['bank_name']) ? sanitize_text_field($_POST['bank_name']) : '';
+        ?>
         <select id="nguk_uk_bank_select"
                 name="bank_name"
                 class="regular-text nguk-bank-select"
                 required>
             <option value="">Select UK bank</option>
-            <option value="Bank of Scotland">Bank of Scotland</option>
-            <option value="Barclays">Barclays</option>
-            <option value="Chase UK">Chase UK</option>
-            <option value="Clydesdale Bank">Clydesdale Bank</option>
-            <option value="Co-operative Bank">Co-operative Bank</option>
-            <option value="First Direct">First Direct</option>
-            <option value="Halifax">Halifax</option>
-            <option value="HSBC">HSBC</option>
-            <option value="Lloyds Bank">Lloyds Bank</option>
-            <option value="Metro Bank">Metro Bank</option>
-            <option value="Monzo">Monzo</option>
-            <option value="Nationwide">Nationwide</option>
-            <option value="NatWest">NatWest</option>
-            <option value="Revolut">Revolut</option>
-            <option value="Royal Bank of Scotland (RBS)">Royal Bank of Scotland (RBS)</option>
-            <option value="Santander">Santander</option>
-            <option value="Starling Bank">Starling Bank</option>
-            <option value="TSB">TSB</option>
-            <option value="Virgin Money">Virgin Money</option>
-            <option value="Yorkshire Bank">Yorkshire Bank</option>
+            <?php foreach ($nguk_uk_banks as $bank_name) { ?>
+                <option value="<?php echo esc_attr($bank_name); ?>" <?php selected($selected_bank_name, $bank_name); ?>>
+                    <?php echo esc_html($bank_name); ?>
+                </option>
+            <?php } ?>
         </select>
     </td>
 </tr>
@@ -1641,45 +1646,6 @@ $business_address = get_option('nguk_business_address');
 </p>
 
 </form>
-<script>
-(function(){
-    function enhanceBankSearch(input){
-        var select = document.getElementById(input.getAttribute('data-target'));
-        if(!select){
-            return;
-        }
-
-        var options = Array.prototype.slice.call(select.options);
-
-        input.addEventListener('input', function(){
-            var query = input.value.toLowerCase();
-            var firstMatch = null;
-
-            options.forEach(function(option){
-                if(option.value === ''){
-                    option.hidden = false;
-                    return;
-                }
-
-                var matched = option.text.toLowerCase().indexOf(query) !== -1;
-                option.hidden = !matched;
-
-                if(matched && !firstMatch){
-                    firstMatch = option;
-                }
-            });
-
-            if(firstMatch){
-                select.value = firstMatch.value;
-            } else if(query !== ''){
-                select.value = '';
-            }
-        });
-    }
-
-    document.querySelectorAll('.nguk-bank-search').forEach(enhanceBankSearch);
-})();
-</script>
 <hr style="margin:40px 0;">
 
 <h2>Saved Beneficiaries</h2>
@@ -2204,7 +2170,10 @@ if (!empty($nguk_force_panel)) {
 } elseif (
     isset($_GET['transaction_search']) ||
     isset($_GET['transaction_page']) ||
-    isset($_GET['transaction_created'])
+    isset($_GET['transaction_created']) ||
+    isset($_GET['transaction_from_date']) ||
+    isset($_GET['transaction_to_date']) ||
+    isset($_GET['transaction_quick_date'])
 ) {
 
     $nguk_current_panel = 'transactions';
@@ -3304,6 +3273,10 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                            name="page"
                            value="nguk-transfer">
 
+                    <input type="hidden"
+                           name="nguk_view"
+                           value="transactions">
+
                     <input type="search"
                            name="customer_search"
                            class="regular-text"
@@ -3314,7 +3287,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                            class="button"
                            value="Search">
 
-                    <a href="?page=nguk-transfer"
+                    <a href="?page=nguk-transfer&nguk_view=transactions"
                        class="button">
                        Clear
                     </a>
@@ -3931,9 +3904,33 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                            placeholder="Search by sender, beneficiary, or phone"
                            value="<?php echo esc_attr(isset($_GET['transaction_search']) ? sanitize_text_field($_GET['transaction_search']) : ''); ?>">
 
+                    <label>
+                        From Date
+                        <input type="date"
+                               name="transaction_from_date"
+                               value="<?php echo esc_attr(isset($_GET['transaction_from_date']) ? sanitize_text_field($_GET['transaction_from_date']) : ''); ?>">
+                    </label>
+
+                    <label>
+                        To Date
+                        <input type="date"
+                               name="transaction_to_date"
+                               value="<?php echo esc_attr(isset($_GET['transaction_to_date']) ? sanitize_text_field($_GET['transaction_to_date']) : ''); ?>">
+                    </label>
+
                     <input type="submit"
                            class="button"
                            value="Search">
+
+                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'nguk-transfer', 'nguk_view' => 'transactions', 'transaction_quick_date' => 'today', 'transaction_search' => isset($_GET['transaction_search']) ? sanitize_text_field($_GET['transaction_search']) : ''), admin_url('admin.php'))); ?>"
+                       class="button">
+                       Today's Transactions
+                    </a>
+
+                    <a href="<?php echo esc_url(add_query_arg(array('page' => 'nguk-transfer', 'nguk_view' => 'transactions', 'transaction_quick_date' => 'yesterday', 'transaction_search' => isset($_GET['transaction_search']) ? sanitize_text_field($_GET['transaction_search']) : ''), admin_url('admin.php'))); ?>"
+                       class="button">
+                       Yesterday's Transactions
+                    </a>
 
                     <a href="?page=nguk-transfer"
                        class="button">
@@ -3965,7 +3962,7 @@ data-sort-code="<?php echo esc_attr($beneficiary->sort_code); ?>"
                             <th>Customer</th>
                             <th>Naira Paid</th>
                             <th>Pounds</th>
-                            <th>Profit</th>
+                            <th>Profit/Loss</th>
                             <th>Status</th>
                             <th>Change Status</th>
                             <th>Receipt</th>
@@ -3986,7 +3983,30 @@ $transaction_search = isset($_GET['transaction_search'])
     ? sanitize_text_field($_GET['transaction_search'])
     : '';
 
-if (!empty($transaction_search)) {
+$transaction_from_date = isset($_GET['transaction_from_date'])
+    ? sanitize_text_field($_GET['transaction_from_date'])
+    : '';
+
+$transaction_to_date = isset($_GET['transaction_to_date'])
+    ? sanitize_text_field($_GET['transaction_to_date'])
+    : '';
+
+$transaction_quick_date = isset($_GET['transaction_quick_date'])
+    ? sanitize_key($_GET['transaction_quick_date'])
+    : '';
+
+if ($transaction_quick_date === 'today') {
+    $transaction_from_date = current_time('Y-m-d');
+    $transaction_to_date = current_time('Y-m-d');
+} elseif ($transaction_quick_date === 'yesterday') {
+    $transaction_from_date = date('Y-m-d', current_time('timestamp') - DAY_IN_SECONDS);
+    $transaction_to_date = $transaction_from_date;
+}
+
+$transaction_has_date_filter = preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_from_date)
+    || preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_to_date);
+
+if (!empty($transaction_search) || $transaction_has_date_filter) {
 
     $transaction_like = '%' . $wpdb->esc_like($transaction_search) . '%';
 
@@ -3994,28 +4014,51 @@ if (!empty($transaction_search)) {
 
     $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
 
-    $all_transactions = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT DISTINCT t.*
-             FROM $transactions_table t
-             LEFT JOIN $customers_table c
-                ON c.customer_name = t.customer_name
-             WHERE t.customer_name LIKE %s
-                OR t.beneficiary_name LIKE %s
-                OR c.phone_number LIKE %s
-                OR EXISTS (
-                    SELECT 1
-                    FROM $beneficiaries_table b
-                    WHERE b.customer_id = c.id
-                      AND b.beneficiary_name LIKE %s
-                )
-             ORDER BY t.id DESC",
-            $transaction_like,
-            $transaction_like,
-            $transaction_like,
-            $transaction_like
-        )
-    );
+    $transaction_id_search = preg_replace('/\D/', '', $transaction_search);
+    $transaction_id = $transaction_id_search !== '' ? intval($transaction_id_search) : 0;
+    $transaction_where = array('1=1');
+    $transaction_params = array();
+
+    if (!empty($transaction_search)) {
+        $transaction_where[] = "(t.customer_name LIKE %s
+            OR t.beneficiary_name LIKE %s
+            OR c.phone_number LIKE %s
+            OR t.tracking_code LIKE %s
+            OR t.id = %d
+            OR EXISTS (
+                SELECT 1
+                FROM $beneficiaries_table b
+                WHERE b.customer_id = c.id
+                  AND b.beneficiary_name LIKE %s
+            ))";
+        $transaction_params[] = $transaction_like;
+        $transaction_params[] = $transaction_like;
+        $transaction_params[] = $transaction_like;
+        $transaction_params[] = $transaction_like;
+        $transaction_params[] = $transaction_id;
+        $transaction_params[] = $transaction_like;
+    }
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_from_date)) {
+        $transaction_where[] = 't.created_at >= %s';
+        $transaction_params[] = $transaction_from_date . ' 00:00:00';
+    }
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_to_date)) {
+        $transaction_where[] = 't.created_at <= %s';
+        $transaction_params[] = $transaction_to_date . ' 23:59:59';
+    }
+
+    $transaction_sql = "SELECT DISTINCT t.*
+         FROM $transactions_table t
+         LEFT JOIN $customers_table c
+            ON c.customer_name = t.customer_name
+         WHERE " . implode(' AND ', $transaction_where) . "
+         ORDER BY t.id DESC";
+
+    $all_transactions = $transaction_params
+        ? $wpdb->get_results($wpdb->prepare($transaction_sql, $transaction_params))
+        : $wpdb->get_results($transaction_sql);
 
 } else {
 
@@ -4085,9 +4128,17 @@ if ($transactions) {
                 £<?php echo floatval($transaction->buy_rate) > 0 ? number_format($transaction->naira_amount / $transaction->buy_rate, 2) : '0.00'; ?> 
             </td>
 
-            <td style="color:green;">
+            <?php
+            $transaction_profit = (floatval($transaction->sell_rate) > 0 && floatval($transaction->buy_rate) > 0)
+                ? (floatval($transaction->naira_amount) / floatval($transaction->sell_rate)) - (floatval($transaction->naira_amount) / floatval($transaction->buy_rate))
+                : floatval($transaction->profit);
+            $transaction_profit_label = $transaction_profit < 0 ? 'Loss' : 'Profit';
+            $transaction_profit_color = $transaction_profit < 0 ? '#dc2626' : '#15803d';
+            $transaction_profit_display = $transaction_profit < 0 ? ($transaction_profit * -1) : $transaction_profit;
+            ?>
+            <td style="color:<?php echo esc_attr($transaction_profit_color); ?>;font-weight:900;">
 
-                £<?php echo number_format($transaction->profit, 2); ?>
+                <?php echo esc_html($transaction_profit_label); ?> GBP <?php echo number_format($transaction_profit_display, 2); ?>
 
             </td>
 
@@ -4183,8 +4234,24 @@ if ($transactions) {
 
                         <?php for ($page_number = 1; $page_number <= $transaction_total_pages; $page_number++) { ?>
 
+                            <?php
+                            $transaction_page_url = add_query_arg(
+                                array_filter(
+                                    array(
+                                        'page' => 'nguk-transfer',
+                                        'nguk_view' => 'transactions',
+                                        'transaction_page' => $page_number,
+                                        'transaction_search' => $transaction_search,
+                                        'transaction_from_date' => $transaction_from_date,
+                                        'transaction_to_date' => $transaction_to_date,
+                                        'transaction_quick_date' => $transaction_quick_date
+                                    )
+                                ),
+                                admin_url('admin.php')
+                            );
+                            ?>
                             <a class="button <?php echo $page_number == $transaction_page ? 'button-primary' : ''; ?>"
-                               href="?page=nguk-transfer&transaction_page=<?php echo $page_number; ?><?php echo !empty($transaction_search) ? '&transaction_search=' . urlencode($transaction_search) : ''; ?>">
+                               href="<?php echo esc_url($transaction_page_url); ?>">
                                <?php echo $page_number; ?>
                             </a>
 
@@ -4213,7 +4280,13 @@ $monthly_turnovers = $wpdb->get_results(
 
         SUM(pounds_amount) as total_pounds,
 
-        SUM(profit) as total_profit
+        SUM(
+            CASE
+                WHEN sell_rate > 0 AND buy_rate > 0
+                THEN (naira_amount / sell_rate) - (naira_amount / buy_rate)
+                ELSE profit
+            END
+        ) as total_profit
 
     FROM $transactions_table
 
@@ -4276,7 +4349,7 @@ box-shadow:0 14px 32px rgba(15,23,42,0.09);
 
                 <th style="color:#fff;padding:14px 12px;">Total Pounds</th>
 
-                <th style="color:#fff;padding:14px 12px;">Total Profit</th>
+                <th style="color:#fff;padding:14px 12px;">Total Profit/Loss</th>
 
             </tr>
 
@@ -4316,8 +4389,14 @@ box-shadow:0 14px 32px rgba(15,23,42,0.09);
                             £<?php echo number_format($turnover->total_pounds, 2); ?>
                         </td>
 
-                        <td style="color:#15803d;font-weight:900;">
-                            £<?php echo number_format($turnover->total_profit, 2); ?>
+                        <?php
+                        $monthly_profit = floatval($turnover->total_profit);
+                        $monthly_profit_label = $monthly_profit < 0 ? 'Loss' : 'Profit';
+                        $monthly_profit_color = $monthly_profit < 0 ? '#dc2626' : '#15803d';
+                        $monthly_profit_display = $monthly_profit < 0 ? ($monthly_profit * -1) : $monthly_profit;
+                        ?>
+                        <td style="color:<?php echo esc_attr($monthly_profit_color); ?>;font-weight:900;">
+                            <?php echo esc_html($monthly_profit_label); ?> GBP <?php echo number_format($monthly_profit_display, 2); ?>
                         </td>
 
                     </tr>
