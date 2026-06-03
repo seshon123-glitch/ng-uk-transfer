@@ -5,6 +5,7 @@ Plugin URI: https://daphkoy.com
 Description: Nigeria to United Kingdom Money Transfer Plugin
 Version: 2.1
 Author: Beejay
+GitHub URI: https://github.com/seshon123-glitch/ng-uk-transfer
 GitHub Plugin URI: seshon123-glitch/ng-uk-transfer
 Primary Branch: main
 */
