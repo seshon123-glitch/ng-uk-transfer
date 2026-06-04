@@ -3,7 +3,7 @@
 Plugin Name: NG-UK Money Transfer
 Plugin URI: https://daphkoy.com
 Description: Nigeria to United Kingdom Money Transfer Plugin
-Version: 2.1
+Version: 2.2
 Author: Beejay
 GitHub URI: https://github.com/seshon123-glitch/ng-uk-transfer
 GitHub Plugin URI: seshon123-glitch/ng-uk-transfer
@@ -33,6 +33,7 @@ require_once NGUK_PLUGIN_PATH . 'includes/class-database.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-reminders.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-dashboard.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-ukng-dashboard.php';
+require_once NGUK_PLUGIN_PATH . 'includes/class-frontend-website.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -40,9 +41,17 @@ require_once NGUK_PLUGIN_PATH . 'includes/class-ukng-dashboard.php';
 |--------------------------------------------------------------------------
 */
 
-register_activation_hook(__FILE__, array('NGUK_Database', 'create_tables'));
+function nguk_activate_plugin() {
+    NGUK_Database::create_tables();
+    NGUK_Frontend_Website::setup_site();
+    update_option('nguk_public_site_version', NGUK_Frontend_Website::VERSION);
+}
+
+register_activation_hook(__FILE__, 'nguk_activate_plugin');
 
 add_action('plugins_loaded', array('NGUK_Database', 'maybe_update_tables'));
+add_action('plugins_loaded', array('NGUK_Frontend_Website', 'init'));
+add_action('init', array('NGUK_Frontend_Website', 'maybe_setup_site'), 20);
 
 /*
 |--------------------------------------------------------------------------
