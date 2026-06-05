@@ -76,7 +76,7 @@ class UKNG_Dashboard {
         $business_logo = trim((string) get_option('nguk_business_logo'));
 
         if ($business_logo === '') {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         if (ctype_digit($business_logo)) {
@@ -85,7 +85,7 @@ class UKNG_Dashboard {
         }
 
         if (preg_match('/localhost|127\.0\.0\.1|local sites/i', $business_logo)) {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         return esc_url_raw($business_logo);
@@ -104,6 +104,10 @@ class UKNG_Dashboard {
 
         if (!isset($_GET['ukng_receipt_id'])) {
             return;
+        }
+
+        if (!current_user_can(NGUK_RECEIPT_CAP)) {
+            wp_die('You do not have permission to download receipts.');
         }
 
         global $wpdb;
@@ -145,6 +149,10 @@ class UKNG_Dashboard {
             return;
         }
 
+        if (!current_user_can(NGUK_RECEIPT_CAP)) {
+            wp_die('You do not have permission to view receipts.');
+        }
+
         global $wpdb;
 
         $transactions_table = $wpdb->prefix . 'ukng_transactions';
@@ -177,6 +185,12 @@ class UKNG_Dashboard {
         $business_address = get_option('nguk_business_address');
         $download_url = admin_url('admin.php?page=nguk-transfer&ukng_receipt_id=' . intval($transaction->id));
         $back_url = admin_url('admin.php?page=nguk-transfer&ukng_view=transactions');
+        $auto_commission = isset($transaction->auto_commission_amount)
+            ? floatval($transaction->auto_commission_amount)
+            : floatval($transaction->commission_amount);
+        $final_commission = floatval($transaction->commission_amount);
+        $commission_difference = $auto_commission - $final_commission;
+        $commission_override_applied = abs($commission_difference) > 0.0001;
         $qr_url = self::qr_code_url(
             array(
                 'Transaction ID: ' . $receipt_number,
@@ -281,6 +295,11 @@ class UKNG_Dashboard {
             <table class="ukng-receipt-table">
                 <tr><th>Transaction ID</th><td><?php echo esc_html($receipt_number); ?></td></tr>
                 <tr><th>Date Created</th><td><?php echo esc_html(date('d M Y h:i A', strtotime($transaction->created_at))); ?></td></tr>
+                <?php if ($commission_override_applied) { ?>
+                    <tr><th>Commission (Auto)</th><td>GBP <?php echo esc_html(number_format($auto_commission, 2)); ?></td></tr>
+                    <tr><th>Commission Override Applied</th><td>GBP <?php echo esc_html(number_format($final_commission, 2)); ?></td></tr>
+                    <tr><th>Override Difference</th><td>GBP <?php echo esc_html(number_format(abs($commission_difference), 2)); ?></td></tr>
+                <?php } ?>
                 <tr><th>Exchange Rate</th><td>NGN <?php echo esc_html(number_format($transaction->exchange_rate, 2)); ?></td></tr>
                 <tr><th>Beneficiary Gets</th><td>NGN <?php echo esc_html(number_format($transaction->naira_amount, 2)); ?></td></tr>
                 <tr><th>Status</th><td class="ukng-status"><?php echo esc_html($transaction->status); ?></td></tr>
@@ -346,6 +365,16 @@ class UKNG_Dashboard {
             ? sanitize_key($_GET['ukng_view'])
             : 'overview';
 
+        if (function_exists('nguk_is_transfer_staff') && nguk_is_transfer_staff()) {
+            $allowed = array(
+                'customers',
+                'payments',
+                'transactions'
+            );
+
+            return in_array($view, $allowed, true) ? $view : 'transactions';
+        }
+
         $allowed = array(
             'overview',
             'customers',
@@ -391,6 +420,12 @@ class UKNG_Dashboard {
 
         global $wpdb;
 
+        if (!current_user_can(NGUK_ACCESS_CAP)) {
+            wp_die('You do not have permission to access UK-Nigeria transfers.');
+        }
+
+        $ukng_is_staff = function_exists('nguk_is_transfer_staff') && nguk_is_transfer_staff();
+
         NGUK_Database::create_ukng_tables();
 
         $customers_table = $wpdb->prefix . 'ukng_customers';
@@ -401,17 +436,21 @@ class UKNG_Dashboard {
         $current_view = self::current_view();
 
         if (isset($_GET['ukng_view_receipt'])) {
+            if (!current_user_can(NGUK_RECEIPT_CAP)) {
+                wp_die('You do not have permission to view receipts.');
+            }
+
             self::view_receipt();
             return;
         }
 
-        if (isset($_POST['ukng_save_rate'])) {
+        if (isset($_POST['ukng_save_rate']) && current_user_can(NGUK_SETTINGS_CAP)) {
             update_option('ukng_exchange_rate', sanitize_text_field($_POST['exchange_rate']));
             echo '<div class="updated"><p>UK to Nigeria exchange rate saved.</p></div>';
             $current_view = 'settings';
         }
 
-        if (isset($_POST['ukng_save_theme'])) {
+        if (isset($_POST['ukng_save_theme']) && current_user_can(NGUK_SETTINGS_CAP)) {
             $theme = isset($_POST['dashboard_theme']) && $_POST['dashboard_theme'] === 'dark'
                 ? 'dark'
                 : 'normal';
@@ -420,7 +459,7 @@ class UKNG_Dashboard {
             $current_view = 'settings';
         }
 
-        if (isset($_POST['ukng_save_customer'])) {
+        if (isset($_POST['ukng_save_customer']) && current_user_can(NGUK_CUSTOMER_CAP)) {
             $kyc_documents = self::upload_kyc_documents();
 
             $wpdb->insert(
@@ -438,7 +477,7 @@ class UKNG_Dashboard {
             $current_view = 'customers';
         }
 
-        if (isset($_GET['ukng_delete_customer'])) {
+        if (isset($_GET['ukng_delete_customer']) && current_user_can(NGUK_DELETE_CAP)) {
             $customer_id = intval($_GET['ukng_delete_customer']);
 
             if ($customer_id > 0 && isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'ukng_delete_customer_' . $customer_id)) {
@@ -451,7 +490,7 @@ class UKNG_Dashboard {
             }
         }
 
-        if (isset($_POST['ukng_save_beneficiary'])) {
+        if (isset($_POST['ukng_save_beneficiary']) && current_user_can(NGUK_CUSTOMER_CAP)) {
             $wpdb->insert(
                 $beneficiaries_table,
                 array(
@@ -467,7 +506,7 @@ class UKNG_Dashboard {
             $current_view = 'customers';
         }
 
-        if (isset($_POST['ukng_save_commission'])) {
+        if (isset($_POST['ukng_save_commission']) && current_user_can(NGUK_SETTINGS_CAP)) {
             $max_amount = trim((string) $_POST['max_amount']);
 
             $wpdb->insert(
@@ -484,7 +523,7 @@ class UKNG_Dashboard {
             $current_view = 'commissions';
         }
 
-        if (isset($_POST['ukng_update_commission'])) {
+        if (isset($_POST['ukng_update_commission']) && current_user_can(NGUK_SETTINGS_CAP)) {
             $max_amount = trim((string) $_POST['max_amount']);
 
             $wpdb->update(
@@ -503,13 +542,13 @@ class UKNG_Dashboard {
             $current_view = 'commissions';
         }
 
-        if (isset($_GET['ukng_delete_commission'])) {
+        if (isset($_GET['ukng_delete_commission']) && current_user_can(NGUK_DELETE_CAP)) {
             $wpdb->delete($commissions_table, array('id' => intval($_GET['ukng_delete_commission'])));
             echo '<div class="updated"><p>Commission rule deleted.</p></div>';
             $current_view = 'commissions';
         }
 
-        if (isset($_POST['ukng_create_transaction'])) {
+        if (isset($_POST['ukng_create_transaction']) && current_user_can(NGUK_PROCESS_CAP)) {
             $customer_id = intval($_POST['customer_id']);
             $beneficiary_id = intval($_POST['beneficiary_id']);
             $pounds_sent = floatval($_POST['pounds_sent']);
@@ -531,8 +570,24 @@ class UKNG_Dashboard {
                 echo '<div class="notice notice-error"><p>Please select a valid customer, beneficiary, pounds amount, and exchange rate.</p></div>';
                 $current_view = 'payments';
             } else {
-                $commission = self::calculate_commission($pounds_sent);
-                $total_paid = $pounds_sent + $commission;
+                $auto_commission = self::calculate_commission($pounds_sent);
+                $final_commission = $auto_commission;
+                $commission_override_applied = false;
+
+                if (
+                    isset($_POST['ukng_confirm_transaction']) &&
+                    current_user_can(NGUK_SETTINGS_CAP) &&
+                    isset($_POST['ukng_commission_override_enabled']) &&
+                    $_POST['ukng_commission_override_enabled'] === '1'
+                ) {
+                    $override_commission = isset($_POST['ukng_commission_override'])
+                        ? floatval($_POST['ukng_commission_override'])
+                        : $auto_commission;
+                    $final_commission = max(0, $override_commission);
+                    $commission_override_applied = abs($final_commission - $auto_commission) > 0.0001;
+                }
+
+                $total_paid = $pounds_sent + $final_commission;
                 $naira_amount = $pounds_sent * $exchange_rate;
                 $beneficiary_bank_details = implode(
                     "\n",
@@ -555,20 +610,87 @@ class UKNG_Dashboard {
                                     <tr><th>Customer</th><td><?php echo esc_html(strtoupper($customer->customer_name)); ?></td></tr>
                                     <tr><th>Beneficiary</th><td><?php echo esc_html(strtoupper($beneficiary->beneficiary_name)); ?></td></tr>
                                     <tr><th>Beneficiary Bank Details</th><td><?php echo nl2br(esc_html($beneficiary_bank_details)); ?></td></tr>
-                                    <tr><th>Pounds Sent</th><td>GBP <?php echo esc_html(number_format($pounds_sent, 2)); ?></td></tr>
-                                    <tr><th>Commission / Profit</th><td>GBP <?php echo esc_html(number_format($commission, 2)); ?></td></tr>
-                                    <tr><th>Total Paid</th><td>GBP <?php echo esc_html(number_format($total_paid, 2)); ?></td></tr>
+                                    <tr><th>Transfer Amount</th><td>GBP <?php echo esc_html(number_format($pounds_sent, 2)); ?></td></tr>
+                                    <tr><th>Calculated Commission</th><td>GBP <span id="ukngAutoCommission"><?php echo esc_html(number_format($auto_commission, 2)); ?></span></td></tr>
+                                    <tr id="ukngOverrideDisplayRow" style="display:none;"><th>Commission Override Applied</th><td>GBP <span id="ukngOverrideDisplay"><?php echo esc_html(number_format($auto_commission, 2)); ?></span></td></tr>
+                                    <tr><th>Final Commission Used</th><td>GBP <span id="ukngFinalCommission"><?php echo esc_html(number_format($final_commission, 2)); ?></span></td></tr>
+                                    <tr><th>Amount to be Processed</th><td>GBP <?php echo esc_html(number_format($pounds_sent, 2)); ?></td></tr>
+                                    <tr><th>Total Paid</th><td>GBP <span id="ukngTotalPaid"><?php echo esc_html(number_format($total_paid, 2)); ?></span></td></tr>
                                     <tr><th>Exchange Rate</th><td>NGN <?php echo esc_html(number_format($exchange_rate, 2)); ?></td></tr>
                                     <tr><th>Beneficiary Gets</th><td>NGN <?php echo esc_html(number_format($naira_amount, 2)); ?></td></tr>
                                     <tr><th>Status</th><td>Pending</td></tr>
                                 </tbody>
                             </table>
 
+                            <?php if (current_user_can(NGUK_SETTINGS_CAP)) { ?>
+                                <div style="margin-top:18px;padding:16px;border:1px solid #dbe4ee;border-radius:8px;background:#f8fafc;">
+                                    <button type="button" id="ukngEditCommissionButton" class="button">Edit Commission</button>
+                                    <div id="ukngCommissionOverridePanel" style="display:none;margin-top:14px;">
+                                        <label style="display:block;font-weight:800;margin-bottom:6px;" for="ukngCommissionOverrideInput">Commission Override (GBP)</label>
+                                        <input type="number"
+                                               id="ukngCommissionOverrideInput"
+                                               step="0.01"
+                                               min="0"
+                                               value="<?php echo esc_attr(number_format($auto_commission, 2, '.', '')); ?>"
+                                               style="max-width:180px;width:100%;">
+                                    </div>
+                                </div>
+                                <script>
+                                (function(){
+                                    function setupCommissionOverride() {
+                                    var editButton = document.getElementById('ukngEditCommissionButton');
+                                    var panel = document.getElementById('ukngCommissionOverridePanel');
+                                    var input = document.getElementById('ukngCommissionOverrideInput');
+                                    var enabled = document.getElementById('ukngCommissionOverrideEnabled');
+                                    var hidden = document.getElementById('ukngCommissionOverrideHidden');
+                                    var overrideRow = document.getElementById('ukngOverrideDisplayRow');
+                                    var overrideDisplay = document.getElementById('ukngOverrideDisplay');
+                                    var finalDisplay = document.getElementById('ukngFinalCommission');
+                                    var totalPaidDisplay = document.getElementById('ukngTotalPaid');
+                                    var poundsSent = <?php echo wp_json_encode(floatval($pounds_sent)); ?>;
+                                    var autoCommission = <?php echo wp_json_encode(floatval($auto_commission)); ?>;
+
+                                    function formatMoney(value) {
+                                        return Number(value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                    }
+
+                                    function updatePreview() {
+                                        var value = Math.max(0, parseFloat(input.value || autoCommission) || 0);
+                                        hidden.value = value.toFixed(2);
+                                        overrideDisplay.textContent = formatMoney(value);
+                                        finalDisplay.textContent = formatMoney(value);
+                                        totalPaidDisplay.textContent = formatMoney(poundsSent + value);
+                                        overrideRow.style.display = enabled.value === '1' ? '' : 'none';
+                                    }
+
+                                    if (editButton && panel && input && enabled && hidden) {
+                                        editButton.addEventListener('click', function(){
+                                            enabled.value = '1';
+                                            panel.style.display = '';
+                                            input.focus();
+                                            updatePreview();
+                                        });
+
+                                        input.addEventListener('input', updatePreview);
+                                    }
+                                    }
+
+                                    if (document.readyState === 'loading') {
+                                        document.addEventListener('DOMContentLoaded', setupCommissionOverride);
+                                    } else {
+                                        setupCommissionOverride();
+                                    }
+                                })();
+                                </script>
+                            <?php } ?>
+
                             <form method="post" style="margin-top:20px;">
                                 <input type="hidden" name="ukng_view" value="payments">
                                 <input type="hidden" name="customer_id" value="<?php echo intval($customer_id); ?>">
                                 <input type="hidden" name="beneficiary_id" value="<?php echo intval($beneficiary_id); ?>">
                                 <input type="hidden" name="pounds_sent" value="<?php echo esc_attr($pounds_sent); ?>">
+                                <input type="hidden" id="ukngCommissionOverrideEnabled" name="ukng_commission_override_enabled" value="0">
+                                <input type="hidden" id="ukngCommissionOverrideHidden" name="ukng_commission_override" value="<?php echo esc_attr(number_format($auto_commission, 2, '.', '')); ?>">
                                 <input type="hidden" name="ukng_confirm_transaction" value="1">
                                 <input type="submit" name="ukng_create_transaction" class="button button-primary" value="Confirm Transaction">
                                 <button type="button" onclick="history.back();" class="button">Cancel / Edit</button>
@@ -587,7 +709,8 @@ class UKNG_Dashboard {
                         'customer_name' => strtoupper($customer->customer_name),
                         'beneficiary_name' => strtoupper($beneficiary->beneficiary_name),
                         'pounds_sent' => $pounds_sent,
-                        'commission_amount' => $commission,
+                        'auto_commission_amount' => $auto_commission,
+                        'commission_amount' => $final_commission,
                         'total_paid' => $total_paid,
                         'exchange_rate' => $exchange_rate,
                         'naira_amount' => $naira_amount,
@@ -610,7 +733,7 @@ class UKNG_Dashboard {
             }
         }
 
-        if (isset($_POST['ukng_update_status'])) {
+        if (isset($_POST['ukng_update_status']) && current_user_can(NGUK_PROCESS_CAP)) {
             $wpdb->update(
                 $transactions_table,
                 array(
@@ -623,13 +746,13 @@ class UKNG_Dashboard {
             $current_view = 'transactions';
         }
 
-        if (isset($_GET['ukng_delete_transaction'])) {
+        if (isset($_GET['ukng_delete_transaction']) && current_user_can(NGUK_DELETE_CAP)) {
             $wpdb->delete($transactions_table, array('id' => intval($_GET['ukng_delete_transaction'])));
             echo '<div class="updated"><p>Transaction deleted.</p></div>';
             $current_view = 'transactions';
         }
 
-        if (isset($_POST['ukng_update_outstanding_payment'])) {
+        if (isset($_POST['ukng_update_outstanding_payment']) && current_user_can(NGUK_SETTINGS_CAP)) {
             $transaction_id = intval($_POST['transaction_id']);
             $amount_paid = max(0, floatval($_POST['amount_paid']));
 
@@ -658,7 +781,7 @@ class UKNG_Dashboard {
             }
         }
 
-        if (isset($_GET['ukng_clear_outstanding'])) {
+        if (isset($_GET['ukng_clear_outstanding']) && current_user_can(NGUK_SETTINGS_CAP)) {
             $clear_transaction = $wpdb->get_row(
                 $wpdb->prepare(
                     "SELECT total_paid FROM $transactions_table WHERE id = %d",
@@ -791,6 +914,22 @@ class UKNG_Dashboard {
             );
         }
 
+        if (!is_array($transactions)) {
+            $transactions = array();
+        }
+
+        $transaction_total_pounds = 0;
+        $transaction_total_profit = 0;
+        $transaction_total_paid = 0;
+        $transaction_total_naira = 0;
+
+        foreach ($transactions as $transaction_total_row) {
+            $transaction_total_pounds += floatval($transaction_total_row->pounds_sent);
+            $transaction_total_profit += floatval($transaction_total_row->commission_amount);
+            $transaction_total_paid += floatval($transaction_total_row->total_paid);
+            $transaction_total_naira += floatval($transaction_total_row->naira_amount);
+        }
+
         $outstanding_transactions = $wpdb->get_results(
             "SELECT * FROM $transactions_table
              WHERE outstanding_status IS NULL
@@ -829,7 +968,7 @@ class UKNG_Dashboard {
             <div class="ukng-hero">
                 <div>
                     <p>UK-Nigeria Operations</p>
-                    <h1>UK-Nigeria Money Transfer Dashboard</h1>
+                    <h1>Daphkoy Limited UK-Nigeria Transfer Dashboard</h1>
                     <p>Manage customers sending GBP from the UK to Nigerian beneficiaries.</p>
                 </div>
                 <div class="ukng-switch">
@@ -851,6 +990,15 @@ class UKNG_Dashboard {
                     'reports' => 'Reports',
                     'settings' => 'Settings'
                 );
+
+                if ($ukng_is_staff) {
+                    $nav_items = array(
+                        'payments' => 'Payments',
+                        'customers' => 'Customers',
+                        'transactions' => 'Transactions'
+                    );
+                }
+
                 foreach ($nav_items as $view => $label) {
                     $class = $view === $current_view ? 'is-active' : '';
                     echo '<a class="' . esc_attr($class) . '" href="' . esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=' . $view)) . '">' . wp_kses_post($label) . '</a>';
@@ -858,7 +1006,7 @@ class UKNG_Dashboard {
                 ?>
             </nav>
 
-            <?php NGUK_Reminders::render_ticker('ukng_view', 'ukng'); ?>
+            <?php if (!$ukng_is_staff) { NGUK_Reminders::render_ticker('ukng_view', 'ukng'); } ?>
 
             <style>
                 .ukng-dashboard{max-width:1360px}
@@ -908,6 +1056,7 @@ class UKNG_Dashboard {
                     <span>Today's Rate</span>
                     <strong>NGN <?php echo esc_html(number_format(floatval($exchange_rate), 2)); ?></strong>
                 </div>
+                <?php if (!$ukng_is_staff) { ?>
                 <form method="post">
                     <div>
                         <label for="ukng_today_rate">Modify Today's Rate</label>
@@ -923,6 +1072,7 @@ class UKNG_Dashboard {
                            class="button button-primary"
                            value="Save Rate">
                 </form>
+                <?php } ?>
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('overview', $current_view)); ?>">
@@ -1022,7 +1172,14 @@ class UKNG_Dashboard {
                 <?php } ?>
 
                 <table class="widefat striped">
-                    <thead><tr><th>No.</th><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th><th>Delete</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>No.</th><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th>
+                            <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                                <th>Delete</th>
+                            <?php } ?>
+                        </tr>
+                    </thead>
                     <tbody>
                         <?php if ($customers) { ?>
                             <?php $customer_count = 1; ?>
@@ -1034,19 +1191,21 @@ class UKNG_Dashboard {
                                     <td><?php echo esc_html($customer->email); ?></td>
                                     <td><?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?></td>
                                     <td><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view_customer=' . intval($customer->id))); ?>">View Profile</a></td>
-                                    <td>
-                                        <a class="button"
-                                           title="Delete customer"
-                                           style="background:#dc2626;border-color:#dc2626;color:#fff;"
-                                           onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
-                                           href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_delete_customer=' . intval($customer->id)), 'ukng_delete_customer_' . intval($customer->id))); ?>">
-                                            <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
-                                        </a>
-                                    </td>
+                                    <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                                        <td>
+                                            <a class="button"
+                                               title="Delete customer"
+                                               style="background:#dc2626;border-color:#dc2626;color:#fff;"
+                                               onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
+                                               href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_delete_customer=' . intval($customer->id)), 'ukng_delete_customer_' . intval($customer->id))); ?>">
+                                                <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
+                                            </a>
+                                        </td>
+                                    <?php } ?>
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="7">No UK-Nigeria customers found.</td></tr>
+                            <tr><td colspan="<?php echo current_user_can(NGUK_DELETE_CAP) ? 7 : 6; ?>">No UK-Nigeria customers found.</td></tr>
                         <?php } ?>
                     </tbody>
                 </table>
@@ -1117,7 +1276,9 @@ class UKNG_Dashboard {
                                     <td>
                                         <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view_receipt=' . intval($transaction->id))); ?>">Receipt</a>
                                         <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_receipt_id=' . intval($transaction->id))); ?>">Download</a>
-                                        <a class="button" style="background:#dc2626;color:#fff;border-color:#dc2626;" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_delete_transaction=' . intval($transaction->id))); ?>" onclick="return confirm('Delete this transaction?');">Delete</a>
+                                        <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                                            <a class="button" style="background:#dc2626;color:#fff;border-color:#dc2626;" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_delete_transaction=' . intval($transaction->id))); ?>" onclick="return confirm('Delete this transaction?');">Delete</a>
+                                        <?php } ?>
                                     </td>
                                 </tr>
                             <?php } ?>
@@ -1125,6 +1286,16 @@ class UKNG_Dashboard {
                             <tr><td colspan="11">No UK to Nigeria transactions found.</td></tr>
                         <?php } ?>
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="5" style="text-align:right;">Totals</th>
+                            <th>GBP <?php echo esc_html(number_format($transaction_total_pounds, 2)); ?></th>
+                            <th style="color:#15803d;font-weight:900;">GBP <?php echo esc_html(number_format($transaction_total_profit, 2)); ?></th>
+                            <th>GBP <?php echo esc_html(number_format($transaction_total_paid, 2)); ?></th>
+                            <th>NGN <?php echo esc_html(number_format($transaction_total_naira, 2)); ?></th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 

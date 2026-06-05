@@ -350,6 +350,7 @@ self::create_reminders_table($charset_collate);
             customer_name varchar(255) NOT NULL,
             beneficiary_name varchar(255) NOT NULL,
             pounds_sent float NOT NULL,
+            auto_commission_amount float NOT NULL DEFAULT 0,
             commission_amount float NOT NULL,
             total_paid float NOT NULL,
             exchange_rate float NOT NULL,
@@ -365,6 +366,25 @@ self::create_reminders_table($charset_collate);
         ) $charset_collate;";
 
         dbDelta($transactions_sql);
+
+        $auto_commission_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'auto_commission_amount'
+            )
+        );
+
+        if (!$auto_commission_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $transactions_table ADD auto_commission_amount float NOT NULL DEFAULT 0 AFTER pounds_sent"
+            );
+
+            $wpdb->query(
+                "UPDATE $transactions_table SET auto_commission_amount = commission_amount WHERE auto_commission_amount = 0"
+            );
+
+        }
 
         $outstanding_status_column = $wpdb->get_var(
             $wpdb->prepare(

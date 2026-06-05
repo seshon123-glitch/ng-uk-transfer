@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 
 class NGUK_Frontend_Website {
 
-    const VERSION = '2.2-astra-layout-menu4';
+    const VERSION = '2.4-daphkoy-limited-branding';
     const HOME_OPTION = 'nguk_public_home_page_id';
     const CONTACT_OPTION = 'nguk_public_contact_page_id';
     const VERSION_OPTION = 'nguk_public_site_version';
@@ -381,7 +381,7 @@ class NGUK_Frontend_Website {
     <section class="nguk-public-hero" id="rates">
         <div class="nguk-public-hero__content">
             <div class="nguk-public-logo">[nguk_public_logo]</div>
-            <p class="nguk-public-eyebrow">Daphkoy Remittance Services</p>
+            <p class="nguk-public-eyebrow">Daphkoy Limited Remittance Services</p>
             <h1>FAST &amp; SECURE NIGERIA ⇄ UK MONEY TRANSFERS</h1>
             <p class="nguk-public-subtitle">Competitive exchange rates, secure transactions and fast processing.</p>
             <div class="nguk-public-actions">
@@ -446,7 +446,7 @@ class NGUK_Frontend_Website {
 
     <section class="nguk-public-cta">
         <h2>Ready to send money?</h2>
-        <p>Contact Daphkoy today to check the latest rate and start your transfer.</p>
+        <p>Contact Daphkoy Limited today to check the latest rate and start your transfer.</p>
         <a href="/contact/" class="nguk-public-button nguk-public-button--primary">Contact Us</a>
     </section>
 
@@ -460,7 +460,7 @@ class NGUK_Frontend_Website {
 
     <footer class="nguk-public-footer">
         <div>[nguk_public_logo]</div>
-        <p>Daphkoy Remittance Services. Fast and secure Nigeria ⇄ UK money transfers.</p>
+        <p>Daphkoy Limited Remittance Services. Fast and secure Nigeria ⇄ UK money transfers.</p>
     </footer>
 </main>
 HTML;
@@ -471,7 +471,7 @@ HTML;
 <main class="nguk-public-contact">
     <section class="nguk-public-contact-hero">
         <div class="nguk-public-logo">[nguk_public_logo]</div>
-        <p class="nguk-public-eyebrow">Contact Daphkoy</p>
+        <p class="nguk-public-eyebrow">Contact Daphkoy Limited</p>
         <h1>Contact Us</h1>
         <p>Send your message and our team will respond as soon as possible.</p>
     </section>
@@ -487,10 +487,10 @@ HTML;
         $logo = self::business_logo_url();
 
         if ($logo) {
-            return '<img src="' . esc_url($logo) . '" alt="Daphkoy" class="nguk-public-logo-img">';
+            return '<img src="' . esc_url($logo) . '" alt="Daphkoy Limited" class="nguk-public-logo-img">';
         }
 
-        return '<strong class="nguk-public-logo-text">Daphkoy</strong>';
+        return '<strong class="nguk-public-logo-text">Daphkoy Limited</strong>';
     }
 
     public static function buy_rate_shortcode() {
@@ -588,17 +588,25 @@ HTML;
             exit;
         }
 
-        $body = "New Daphkoy contact enquiry\n\n";
+        $body = "New Daphkoy Limited contact enquiry\n\n";
         $body .= "Name: $full_name\n";
         $body .= "Email: $email\n";
         $body .= "Phone: $phone\n\n";
         $body .= "Message:\n$message\n";
 
+        $recipient = get_option('nguk_business_email', 'info@daphkoy.com');
+
+        if (!is_email($recipient)) {
+            $recipient = 'info@daphkoy.com';
+        }
+
         $headers = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: Daphkoy Limited Website <' . self::contact_mail_from_address($recipient) . '>',
             'Reply-To: ' . $full_name . ' <' . $email . '>'
         );
 
-        $sent = wp_mail('info@daphkoy.com', 'New Daphkoy contact enquiry', $body, $headers);
+        $sent = wp_mail($recipient, 'New Daphkoy Limited contact enquiry', $body, $headers);
 
         if (!$sent) {
             wp_safe_redirect(add_query_arg('nguk_contact_error', rawurlencode('Message could not be sent. Please try again.'), $redirect));
@@ -607,6 +615,20 @@ HTML;
 
         wp_safe_redirect(add_query_arg('nguk_contact_sent', '1', remove_query_arg('nguk_contact_error', $redirect)));
         exit;
+    }
+
+    private static function contact_mail_from_address($fallback_email) {
+        $host = wp_parse_url(home_url(), PHP_URL_HOST);
+
+        if ($host) {
+            $host = preg_replace('/^www\./', '', strtolower($host));
+
+            if (strpos($host, '.') !== false && substr($host, -6) !== '.local') {
+                return sanitize_email('no-reply@' . $host);
+            }
+        }
+
+        return sanitize_email($fallback_email);
     }
 
     public static function enqueue_assets() {
@@ -640,7 +662,7 @@ HTML;
         $business_logo = trim((string) get_option('nguk_business_logo'));
 
         if ($business_logo === '') {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         if (ctype_digit($business_logo)) {
@@ -649,7 +671,7 @@ HTML;
         }
 
         if (preg_match('/localhost|127\.0\.0\.1|local sites/i', $business_logo)) {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         return esc_url_raw($business_logo);

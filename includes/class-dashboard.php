@@ -174,7 +174,7 @@ class NGUK_Dashboard {
         $business_logo = trim((string) get_option('nguk_business_logo'));
 
         if ($business_logo === '') {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         if (ctype_digit($business_logo)) {
@@ -183,7 +183,7 @@ class NGUK_Dashboard {
         }
 
         if (preg_match('/localhost|127\.0\.0\.1|local sites/i', $business_logo)) {
-            return '';
+            return defined('NGUK_DEFAULT_LOGO_URL') ? NGUK_DEFAULT_LOGO_URL : '';
         }
 
         return esc_url_raw($business_logo);
@@ -210,6 +210,10 @@ class NGUK_Dashboard {
         }
 
         global $wpdb;
+
+        if (!current_user_can(NGUK_RECEIPT_CAP)) {
+            wp_die('You do not have permission to download receipts.');
+        }
 
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
@@ -374,6 +378,12 @@ class NGUK_Dashboard {
 
         global $wpdb;
 
+        if (!current_user_can(NGUK_ACCESS_CAP)) {
+            wp_die('You do not have permission to access NG-UK transfers.');
+        }
+
+        $nguk_is_staff = function_exists('nguk_is_transfer_staff') && nguk_is_transfer_staff();
+
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
         $nguk_force_panel = '';
@@ -398,6 +408,10 @@ class NGUK_Dashboard {
         ========================== */
 
         if (isset($_GET['download_receipt'])) {
+
+            if (!current_user_can(NGUK_RECEIPT_CAP)) {
+                wp_die('You do not have permission to view receipts.');
+            }
 
             $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
@@ -526,6 +540,10 @@ class NGUK_Dashboard {
         }
 
         if (isset($_GET['view_receipt'])) {
+
+            if (!current_user_can(NGUK_RECEIPT_CAP)) {
+                wp_die('You do not have permission to view receipts.');
+            }
 
             $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
@@ -1306,7 +1324,7 @@ SAVE BENEFICIARY
 =========================================
 */
 
-if (isset($_POST['save_beneficiary'])) {
+if (isset($_POST['save_beneficiary']) && current_user_can(NGUK_CUSTOMER_CAP)) {
 
     $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
 
@@ -1344,7 +1362,7 @@ SAVE CUSTOMER
 =========================================
 */
 
-if (isset($_POST['save_customer'])) {
+if (isset($_POST['save_customer']) && current_user_can(NGUK_CUSTOMER_CAP)) {
 
     $customers_table = $wpdb->prefix . 'nguk_customers';
     $kyc_documents = self::upload_kyc_documents();
@@ -1383,7 +1401,7 @@ UPDATE CUSTOMER NOTES
 =========================================
 */
 
-if (isset($_POST['update_customer_notes'])) {
+if (isset($_POST['update_customer_notes']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     $customers_table = $wpdb->prefix . 'nguk_customers';
 
@@ -1417,7 +1435,7 @@ if (isset($_POST['update_customer_notes'])) {
 
 }
 
-if (isset($_GET['delete_customer'])) {
+if (isset($_GET['delete_customer']) && current_user_can(NGUK_DELETE_CAP)) {
 
     $customers_table = $wpdb->prefix . 'nguk_customers';
     $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
@@ -1442,7 +1460,7 @@ if (isset($_GET['delete_customer'])) {
            VIEW CUSTOMER
         ========================== */
 
-        if (isset($_GET['view_customer'])) {
+        if (isset($_GET['view_customer']) && current_user_can(NGUK_CUSTOMER_CAP)) {
 
             $customers_table = $wpdb->prefix . 'nguk_customers';
 
@@ -1759,7 +1777,7 @@ Send Money
                 return;
             }
         }
-        if (isset($_POST['save_business_settings'])) {
+        if (isset($_POST['save_business_settings']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     update_option('nguk_business_name', sanitize_text_field($_POST['business_name']));
 
@@ -1775,7 +1793,7 @@ Send Money
 
     echo '<div class="updated"><p>Business settings saved successfully.</p></div>';
 }
-if (isset($_POST['save_dashboard_theme'])) {
+if (isset($_POST['save_dashboard_theme']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     $theme = isset($_POST['dashboard_theme']) && $_POST['dashboard_theme'] === 'dark'
         ? 'dark'
@@ -1786,7 +1804,7 @@ if (isset($_POST['save_dashboard_theme'])) {
     echo '<div class="updated"><p>Dashboard theme saved successfully.</p></div>';
 
 }
-if (isset($_POST['save_exchange_rates'])) {
+if (isset($_POST['save_exchange_rates']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     update_option('nguk_buy_rate', sanitize_text_field($_POST['buy_rate']));
 
@@ -1800,7 +1818,7 @@ if (isset($_POST['save_exchange_rates'])) {
     echo '<div class="updated"><p>Exchange rates updated successfully.</p></div>';
 
 }
-if (isset($_POST['save_bank_account'])) {
+if (isset($_POST['save_bank_account']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     $bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
 
@@ -1827,7 +1845,7 @@ if (isset($_POST['save_bank_account'])) {
     echo '<div class="updated"><p>Bank account saved successfully.</p></div>';
 
 }
-if (isset($_GET['delete_bank_account'])) {
+if (isset($_GET['delete_bank_account']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
     $bank_accounts_table = $wpdb->prefix . 'nguk_bank_accounts';
 
@@ -1847,7 +1865,7 @@ if (isset($_GET['delete_bank_account'])) {
 
 }
 
-        if (isset($_POST['save_transaction'])) {
+        if (isset($_POST['save_transaction']) && current_user_can(NGUK_PROCESS_CAP)) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
@@ -2079,7 +2097,7 @@ $customer_name = strtoupper($customer->customer_name);
     }
 
 }
-if (isset($_POST['update_transaction_status'])) {
+if (isset($_POST['update_transaction_status']) && current_user_can(NGUK_PROCESS_CAP)) {
 
     $transactions_table = $wpdb->prefix . 'nguk_transactions';
 
@@ -2130,7 +2148,7 @@ if (isset($_POST['update_transaction_status'])) {
     }
 
 }
-if (isset($_GET['delete_transaction'])) {
+if (isset($_GET['delete_transaction']) && current_user_can(NGUK_DELETE_CAP)) {
 
     global $wpdb;
 
@@ -2212,9 +2230,17 @@ $nguk_allowed_panels = array(
     'settings'
 );
 
+if ($nguk_is_staff) {
+    $nguk_allowed_panels = array(
+        'payments',
+        'customers',
+        'transactions'
+    );
+}
+
 if (!in_array($nguk_current_panel, $nguk_allowed_panels, true)) {
 
-    $nguk_current_panel = 'overview';
+    $nguk_current_panel = $nguk_is_staff ? 'transactions' : 'overview';
 
 }
 
@@ -2233,8 +2259,8 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
             <div class="nguk-app-hero">
                 <div>
-                    <p class="nguk-app-kicker">Daphkoy Operations</p>
-                    <h1>NG-UK Money Transfer Dashboard</h1>
+                    <p class="nguk-app-kicker">Daphkoy Limited Operations</p>
+                    <h1>Daphkoy Limited Transfer Dashboard</h1>
                     <p class="nguk-app-subtitle">Manage rates, customers, transfers, receipts, and monthly performance.</p>
                 </div>
                 <div class="nguk-hero-actions">
@@ -2256,7 +2282,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                           action="<?php echo esc_url(admin_url('admin.php')); ?>"
                           style="margin:0;">
                         <input type="hidden" name="page" value="nguk-transfer">
-                        <input type="hidden" name="ukng_view" value="overview">
+                        <input type="hidden" name="ukng_view" value="<?php echo $nguk_is_staff ? 'transactions' : 'overview'; ?>">
                         <button type="submit"
                                 class="button nguk-ukng-switch-button">
                             UK to Nigeria
@@ -2272,10 +2298,12 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                    class="button button-primary">
                    Login
                 </a>
-                <a href="<?php echo esc_url(wp_registration_url()); ?>"
-                   class="button">
-                   Register
-                </a>
+                <?php if (!$nguk_is_staff) { ?>
+                    <a href="<?php echo esc_url(wp_registration_url()); ?>"
+                       class="button">
+                       Register
+                    </a>
+                <?php } ?>
                 <a href="<?php echo esc_url(wp_lostpassword_url()); ?>"
                    class="button">
                    Forgot Password
@@ -2288,16 +2316,20 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
             </div>
 
             <nav class="nguk-app-nav" aria-label="Dashboard sections">
+                <?php if (!$nguk_is_staff) { ?>
                 <a href="?page=nguk-transfer&nguk_view=overview" class="nguk-nav-button" data-nguk-tab="overview" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('overview');return false;}">Overview</a>
+                <?php } ?>
                 <a href="?page=nguk-transfer&nguk_view=payments" class="nguk-nav-button" data-nguk-tab="payments" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('payments');return false;}">Payments</a>
                 <a href="?page=nguk-transfer&nguk_view=customers" class="nguk-nav-button" data-nguk-tab="customers" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('customers');return false;}">Customers</a>
                 <a href="?page=nguk-transfer&nguk_view=transactions" class="nguk-nav-button" data-nguk-tab="transactions" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('transactions');return false;}">Transactions</a>
+                <?php if (!$nguk_is_staff) { ?>
                 <a href="?page=nguk-transfer&nguk_view=reminders" class="nguk-nav-button" data-nguk-tab="reminders" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('reminders');return false;}"><?php echo wp_kses_post(NGUK_Reminders::render_badge('nguk')); ?></a>
                 <a href="?page=nguk-transfer&nguk_view=reports" class="nguk-nav-button" data-nguk-tab="reports" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('reports');return false;}">Reports</a>
                 <a href="?page=nguk-transfer&nguk_view=settings" class="nguk-nav-button" data-nguk-tab="settings" onclick="if(window.ngukShowDashboardPanel){window.ngukShowDashboardPanel('settings');return false;}">Settings</a>
+                <?php } ?>
             </nav>
 
-            <?php NGUK_Reminders::render_ticker('nguk_view', 'nguk'); ?>
+            <?php if (!$nguk_is_staff) { NGUK_Reminders::render_ticker('nguk_view', 'nguk'); } ?>
 
             <script>
             (function(){
@@ -3235,7 +3267,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                 $customers_table = $wpdb->prefix . 'nguk_customers';
 
-                if (isset($_GET['view_customer_note'])) {
+                if (isset($_GET['view_customer_note']) && current_user_can(NGUK_SETTINGS_CAP)) {
 
                     $note_customer_id = intval($_GET['view_customer_note']);
 
@@ -3287,7 +3319,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                     <input type="hidden"
                            name="nguk_view"
-                           value="transactions">
+                           value="customers">
 
                     <input type="search"
                            name="customer_search"
@@ -3299,7 +3331,7 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                            class="button"
                            value="Search">
 
-                    <a href="?page=nguk-transfer&nguk_view=transactions"
+                    <a href="?page=nguk-transfer&nguk_view=customers"
                        class="button">
                        Clear
                     </a>
@@ -3314,10 +3346,14 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                             <th>Customer Name</th>
                             <th>Phone</th>
                             <th>KYC Documents</th>
-                            <th>Note / Risk Assessment</th>
-                            <th>View Note</th>
+                            <?php if (current_user_can(NGUK_SETTINGS_CAP)) { ?>
+                                <th>Note / Risk Assessment</th>
+                                <th>View Note</th>
+                            <?php } ?>
                             <th>Profile</th>
-                            <th>Delete</th>
+                            <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                                <th>Delete</th>
+                            <?php } ?>
                         </tr>
                     </thead>
 
@@ -3397,34 +3433,36 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
                                     <?php self::render_kyc_documents(isset($customer->kyc_documents) ? $customer->kyc_documents : ''); ?>
                                 </td>
 
-                                <td>
-                                    <form method="post"
-                                          style="margin:0;">
+                                <?php if (current_user_can(NGUK_SETTINGS_CAP)) { ?>
+                                    <td>
+                                        <form method="post"
+                                              style="margin:0;">
 
-                                        <input type="hidden"
-                                               name="customer_id"
-                                               value="<?php echo intval($customer->id); ?>">
+                                            <input type="hidden"
+                                                   name="customer_id"
+                                                   value="<?php echo intval($customer->id); ?>">
 
-                                        <textarea name="customer_notes"
-                                                  rows="3"
-                                                  style="width:100%;min-width:260px;"><?php echo esc_textarea($customer->notes); ?></textarea>
+                                            <textarea name="customer_notes"
+                                                      rows="3"
+                                                      style="width:100%;min-width:260px;"><?php echo esc_textarea($customer->notes); ?></textarea>
 
-                                        <p style="margin:6px 0 0;">
-                                            <input type="submit"
-                                                   name="update_customer_notes"
-                                                   class="button"
-                                                   value="Save Note">
-                                        </p>
+                                            <p style="margin:6px 0 0;">
+                                                <input type="submit"
+                                                       name="update_customer_notes"
+                                                       class="button"
+                                                       value="Save Note">
+                                            </p>
 
-                                    </form>
-                                </td>
+                                        </form>
+                                    </td>
 
-                                <td>
-                                    <a href="?page=nguk-transfer&view_customer_note=<?php echo intval($customer->id); ?>#customer-note-view"
-                                       class="button">
-                                       View
-                                    </a>
-                                </td>
+                                    <td>
+                                        <a href="?page=nguk-transfer&view_customer_note=<?php echo intval($customer->id); ?>#customer-note-view"
+                                           class="button">
+                                           View
+                                        </a>
+                                    </td>
+                                <?php } ?>
 
                                 <td>
 
@@ -3437,15 +3475,17 @@ $nguk_panel_class = function($panel) use ($nguk_current_panel) {
 
                                 </td>
 
-                                <td>
-                                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&nguk_view=customers&delete_customer=' . intval($customer->id)), 'nguk_delete_customer_' . intval($customer->id))); ?>"
-                                       class="button"
-                                       title="Delete customer"
-                                       onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
-                                       style="background:#dc2626;border-color:#dc2626;color:#fff;">
-                                        <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
-                                    </a>
-                                </td>
+                                <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                                    <td>
+                                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=nguk-transfer&nguk_view=customers&delete_customer=' . intval($customer->id)), 'nguk_delete_customer_' . intval($customer->id))); ?>"
+                                           class="button"
+                                           title="Delete customer"
+                                           onclick="return confirm('Delete this customer and their beneficiaries? Existing transaction history will remain.');"
+                                           style="background:#dc2626;border-color:#dc2626;color:#fff;">
+                                            <span class="dashicons dashicons-trash" style="vertical-align:middle;"></span>
+                                        </a>
+                                    </td>
+                                <?php } ?>
 
                             </tr>
 
@@ -4088,6 +4128,24 @@ if (!is_array($all_transactions)) {
 
 }
 
+$transaction_total_naira = 0;
+$transaction_total_pounds = 0;
+$transaction_total_profit = 0;
+
+foreach ($all_transactions as $transaction_total_row) {
+    $transaction_total_naira += floatval($transaction_total_row->naira_amount);
+    $transaction_total_pounds += floatval($transaction_total_row->buy_rate) > 0
+        ? floatval($transaction_total_row->naira_amount) / floatval($transaction_total_row->buy_rate)
+        : 0;
+    $transaction_total_profit += (floatval($transaction_total_row->sell_rate) > 0 && floatval($transaction_total_row->buy_rate) > 0)
+        ? (floatval($transaction_total_row->naira_amount) / floatval($transaction_total_row->sell_rate)) - (floatval($transaction_total_row->naira_amount) / floatval($transaction_total_row->buy_rate))
+        : floatval($transaction_total_row->profit);
+}
+
+$transaction_total_profit_label = $transaction_total_profit < 0 ? 'Loss' : 'Profit';
+$transaction_total_profit_color = $transaction_total_profit < 0 ? '#dc2626' : '#15803d';
+$transaction_total_profit_display = $transaction_total_profit < 0 ? ($transaction_total_profit * -1) : $transaction_total_profit;
+
 $transaction_total_pages = max(
     1,
     ceil(count($all_transactions) / $transactions_per_page)
@@ -4206,14 +4264,16 @@ if ($transactions) {
                    View Receipt
 
                 </a>
-                <a href="?page=nguk-transfer&delete_transaction=<?php echo $transaction->id; ?>"
-   class="button"
-   onclick="return confirm('Are you sure you want to delete this transaction?');"
-   style="background:red;color:white;border-color:red;margin-left:5px;">
+                <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
+                    <a href="?page=nguk-transfer&delete_transaction=<?php echo $transaction->id; ?>"
+       class="button"
+       onclick="return confirm('Are you sure you want to delete this transaction?');"
+       style="background:red;color:white;border-color:red;margin-left:5px;">
 
-   Delete
+       Delete
 
-</a>
+    </a>
+                <?php } ?>
 
             </td>
 
@@ -4237,6 +4297,18 @@ if ($transactions) {
 ?>
 
                     </tbody>
+
+                    <tfoot>
+                        <tr>
+                            <th colspan="2" style="text-align:right;">Totals</th>
+                            <th>&#8358;<?php echo esc_html(number_format($transaction_total_naira, 2)); ?></th>
+                            <th>&pound;<?php echo esc_html(number_format($transaction_total_pounds, 2)); ?></th>
+                            <th style="color:<?php echo esc_attr($transaction_total_profit_color); ?>;font-weight:900;">
+                                <?php echo esc_html($transaction_total_profit_label); ?> GBP <?php echo esc_html(number_format($transaction_total_profit_display, 2)); ?>
+                            </th>
+                            <th colspan="3"></th>
+                        </tr>
+                    </tfoot>
 
                 </table>
 
@@ -4349,19 +4421,19 @@ box-shadow:0 14px 32px rgba(15,23,42,0.09);
 
         <thead style="background:#12372a;color:#fff;">
 
-            <tr>
+            <tr style="background:#12372a;color:#fff;">
 
-                <th style="color:#fff;padding:14px 12px;">No.</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">No.</th>
 
-                <th style="color:#fff;padding:14px 12px;">Month</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">Month</th>
 
-                <th style="color:#fff;padding:14px 12px;">Total Transactions</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">Total Transactions</th>
 
-                <th style="color:#fff;padding:14px 12px;">Total Naira</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">Total Naira</th>
 
-                <th style="color:#fff;padding:14px 12px;">Total Pounds</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">Total Pounds</th>
 
-                <th style="color:#fff;padding:14px 12px;">Total Profit/Loss</th>
+                <th style="background:#12372a;color:#fff;padding:14px 12px;">Total Profit/Loss</th>
 
             </tr>
 
