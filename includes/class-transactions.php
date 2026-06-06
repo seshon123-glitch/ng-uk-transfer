@@ -81,6 +81,8 @@ class NGUK_Transactions {
 
             );
 
+            NGUK_Database::clear_monthly_cache('nguk');
+
             echo '
             <div class="notice notice-success is-dismissible">
                 <p>Transaction created successfully.</p>
@@ -106,6 +108,8 @@ class NGUK_Transactions {
                 $table,
                 array('id' => $id)
             );
+
+            NGUK_Database::clear_monthly_cache('nguk');
 
             echo '
             <div class="notice notice-success is-dismissible">

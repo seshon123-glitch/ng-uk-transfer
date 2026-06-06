@@ -727,6 +727,7 @@ class UKNG_Dashboard {
                     echo '<div class="notice notice-error"><p>Transaction could not be created. ' . esc_html($wpdb->last_error) . '</p></div>';
                     $current_view = 'payments';
                 } else {
+                    NGUK_Database::clear_monthly_cache('ukng');
                     echo '<div class="updated"><p>UK to Nigeria transaction created.</p></div>';
                     $current_view = 'transactions';
                 }
@@ -742,12 +743,14 @@ class UKNG_Dashboard {
                 ),
                 array('id' => intval($_POST['transaction_id']))
             );
+            NGUK_Database::clear_monthly_cache('ukng');
             echo '<div class="updated"><p>Transaction status updated.</p></div>';
             $current_view = 'transactions';
         }
 
         if (isset($_GET['ukng_delete_transaction']) && current_user_can(NGUK_DELETE_CAP)) {
             $wpdb->delete($transactions_table, array('id' => intval($_GET['ukng_delete_transaction'])));
+            NGUK_Database::clear_monthly_cache('ukng');
             echo '<div class="updated"><p>Transaction deleted.</p></div>';
             $current_view = 'transactions';
         }
@@ -776,6 +779,8 @@ class UKNG_Dashboard {
                     array('id' => $transaction_id)
                 );
 
+                NGUK_Database::clear_monthly_cache('ukng');
+
                 echo '<div class="updated"><p>Customer wallet updated.</p></div>';
                 $current_view = 'outstanding';
             }
@@ -797,6 +802,7 @@ class UKNG_Dashboard {
                 ),
                 array('id' => intval($_GET['ukng_clear_outstanding']))
             );
+            NGUK_Database::clear_monthly_cache('ukng');
             echo '<div class="updated"><p>Outstanding balance cleared.</p></div>';
             $current_view = 'outstanding';
         }
@@ -831,8 +837,78 @@ class UKNG_Dashboard {
             $transaction_to_date = $transaction_from_date;
         }
 
-        $all_customers = $wpdb->get_results("SELECT * FROM $customers_table ORDER BY customer_name ASC");
-        $customers = $all_customers;
+        $selected_payment_customer_id = isset($_GET['customer_id'])
+            ? intval($_GET['customer_id'])
+            : 0;
+
+        $selected_payment_beneficiary_id = isset($_GET['beneficiary_id'])
+            ? intval($_GET['beneficiary_id'])
+            : 0;
+
+        if (isset($_GET['ukng_repeat_transaction'])) {
+            $repeat_transaction = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT customer_id, beneficiary_id FROM $transactions_table WHERE id = %d",
+                    intval($_GET['ukng_repeat_transaction'])
+                )
+            );
+
+            if ($repeat_transaction) {
+                $selected_payment_customer_id = intval($repeat_transaction->customer_id);
+                $selected_payment_beneficiary_id = intval($repeat_transaction->beneficiary_id);
+            }
+        }
+
+        $all_customers = $wpdb->get_results("SELECT * FROM $customers_table ORDER BY customer_name ASC LIMIT 100");
+
+        if ($selected_payment_customer_id) {
+            $selected_payment_customer = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $customers_table WHERE id = %d",
+                    $selected_payment_customer_id
+                )
+            );
+
+            if ($selected_payment_customer) {
+                $payment_customer_map = array();
+                $payment_customer_map[$selected_payment_customer->id] = $selected_payment_customer;
+
+                foreach ((array) $all_customers as $payment_customer_option) {
+                    $payment_customer_map[$payment_customer_option->id] = $payment_customer_option;
+                }
+
+                $all_customers = array_values($payment_customer_map);
+            }
+        }
+
+        $all_customer_count = intval(
+            $wpdb->get_var("SELECT COUNT(*) FROM $customers_table")
+        );
+        $customers_per_page = 15;
+        $customer_page = isset($_GET['ukng_customer_page'])
+            ? max(1, intval($_GET['ukng_customer_page']))
+            : 1;
+
+        if ($customer_search !== '') {
+            $customer_like = '%' . $wpdb->esc_like($customer_search) . '%';
+            $customer_total_count = intval(
+                $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(*) FROM $customers_table
+                         WHERE customer_name LIKE %s
+                            OR phone_number LIKE %s",
+                        $customer_like,
+                        $customer_like
+                    )
+                )
+            );
+        } else {
+            $customer_total_count = $all_customer_count;
+        }
+
+        $customer_total_pages = max(1, ceil($customer_total_count / $customers_per_page));
+        $customer_page = min($customer_page, $customer_total_pages);
+        $customer_offset = ($customer_page - 1) * $customers_per_page;
 
         if ($customer_search !== '') {
             $customer_like = '%' . $wpdb->esc_like($customer_search) . '%';
@@ -841,9 +917,20 @@ class UKNG_Dashboard {
                     "SELECT * FROM $customers_table
                      WHERE customer_name LIKE %s
                         OR phone_number LIKE %s
-                     ORDER BY customer_name ASC",
+                     ORDER BY is_favourite DESC, customer_name ASC
+                     LIMIT %d OFFSET %d",
                     $customer_like,
-                    $customer_like
+                    $customer_like,
+                    $customers_per_page,
+                    $customer_offset
+                )
+            );
+        } else {
+            $customers = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT * FROM $customers_table ORDER BY is_favourite DESC, customer_name ASC LIMIT %d OFFSET %d",
+                    $customers_per_page,
+                    $customer_offset
                 )
             );
         }
@@ -852,6 +939,11 @@ class UKNG_Dashboard {
 
         $transaction_has_date_filter = preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_from_date)
             || preg_match('/^\d{4}-\d{2}-\d{2}$/', $transaction_to_date);
+
+        $transactions_per_page = 50;
+        $transaction_page = isset($_GET['ukng_transaction_page'])
+            ? max(1, intval($_GET['ukng_transaction_page']))
+            : 1;
 
         if ($transaction_search !== '' || $transaction_has_date_filter) {
             $transaction_like = '%' . $wpdb->esc_like($transaction_search) . '%';
@@ -894,23 +986,74 @@ class UKNG_Dashboard {
                 $transaction_params[] = $transaction_to_date . ' 23:59:59';
             }
 
-            $transaction_sql = "SELECT t.*, c.phone_number AS customer_phone
-                 FROM $transactions_table t
+            $transaction_base_sql = "FROM $transactions_table t
                  LEFT JOIN $customers_table c ON c.id = t.customer_id
-                 WHERE " . implode(' AND ', $transaction_where) . "
-                 ORDER BY t.id DESC
-                 LIMIT 50";
+                 WHERE " . implode(' AND ', $transaction_where);
 
-            $transactions = $transaction_params
-                ? $wpdb->get_results($wpdb->prepare($transaction_sql, $transaction_params))
-                : $wpdb->get_results($transaction_sql);
-        } else {
-            $transactions = $wpdb->get_results(
-                "SELECT t.*, c.phone_number AS customer_phone
-                 FROM $transactions_table t
-                 LEFT JOIN $customers_table c ON c.id = t.customer_id
+            $transaction_total_count = intval(
+                $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(*) " . $transaction_base_sql,
+                        $transaction_params
+                    )
+                )
+            );
+
+            $transaction_total_pages = max(1, ceil($transaction_total_count / $transactions_per_page));
+            $transaction_page = min($transaction_page, $transaction_total_pages);
+            $transaction_offset = ($transaction_page - 1) * $transactions_per_page;
+
+            $transaction_totals = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT
+                        COALESCE(SUM(t.pounds_sent), 0) as total_pounds,
+                        COALESCE(SUM(t.commission_amount), 0) as total_profit,
+                        COALESCE(SUM(t.total_paid), 0) as total_paid,
+                        COALESCE(SUM(t.naira_amount), 0) as total_naira
+                     " . $transaction_base_sql,
+                    $transaction_params
+                )
+            );
+
+            $transaction_sql = "SELECT t.*, c.phone_number AS customer_phone
+                 " . $transaction_base_sql . "
                  ORDER BY t.id DESC
-                 LIMIT 50"
+                 LIMIT %d OFFSET %d";
+
+            $transaction_page_params = array_merge(
+                $transaction_params,
+                array($transactions_per_page, $transaction_offset)
+            );
+
+            $transactions = $wpdb->get_results($wpdb->prepare($transaction_sql, $transaction_page_params));
+        } else {
+            $transaction_total_count = intval(
+                $wpdb->get_var("SELECT COUNT(*) FROM $transactions_table")
+            );
+
+            $transaction_total_pages = max(1, ceil($transaction_total_count / $transactions_per_page));
+            $transaction_page = min($transaction_page, $transaction_total_pages);
+            $transaction_offset = ($transaction_page - 1) * $transactions_per_page;
+
+            $transaction_totals = $wpdb->get_row(
+                "SELECT
+                    COALESCE(SUM(pounds_sent), 0) as total_pounds,
+                    COALESCE(SUM(commission_amount), 0) as total_profit,
+                    COALESCE(SUM(total_paid), 0) as total_paid,
+                    COALESCE(SUM(naira_amount), 0) as total_naira
+                 FROM $transactions_table"
+            );
+
+            $transactions = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT t.*, c.phone_number AS customer_phone
+                     FROM $transactions_table t
+                     LEFT JOIN $customers_table c ON c.id = t.customer_id
+                     ORDER BY t.id DESC
+                     LIMIT %d OFFSET %d",
+                    $transactions_per_page,
+                    $transaction_offset
+                )
             );
         }
 
@@ -918,17 +1061,10 @@ class UKNG_Dashboard {
             $transactions = array();
         }
 
-        $transaction_total_pounds = 0;
-        $transaction_total_profit = 0;
-        $transaction_total_paid = 0;
-        $transaction_total_naira = 0;
-
-        foreach ($transactions as $transaction_total_row) {
-            $transaction_total_pounds += floatval($transaction_total_row->pounds_sent);
-            $transaction_total_profit += floatval($transaction_total_row->commission_amount);
-            $transaction_total_paid += floatval($transaction_total_row->total_paid);
-            $transaction_total_naira += floatval($transaction_total_row->naira_amount);
-        }
+        $transaction_total_pounds = $transaction_totals ? floatval($transaction_totals->total_pounds) : 0;
+        $transaction_total_profit = $transaction_totals ? floatval($transaction_totals->total_profit) : 0;
+        $transaction_total_paid = $transaction_totals ? floatval($transaction_totals->total_paid) : 0;
+        $transaction_total_naira = $transaction_totals ? floatval($transaction_totals->total_naira) : 0;
 
         $outstanding_transactions = $wpdb->get_results(
             "SELECT * FROM $transactions_table
@@ -938,28 +1074,59 @@ class UKNG_Dashboard {
              ORDER BY id DESC"
         );
         $commission_rules = $wpdb->get_results("SELECT * FROM $commissions_table ORDER BY min_amount ASC");
-        $total_outstanding = 0;
-        $total_wallet_paid = 0;
-        $total_remaining_balance = 0;
+        $outstanding_totals = $wpdb->get_row(
+            "SELECT
+                COALESCE(SUM(total_paid), 0) as total_outstanding,
+                COALESCE(SUM(LEAST(COALESCE(amount_paid, 0), total_paid)), 0) as total_wallet_paid,
+                COALESCE(SUM(GREATEST(total_paid - LEAST(COALESCE(amount_paid, 0), total_paid), 0)), 0) as total_remaining_balance
+             FROM $transactions_table
+             WHERE outstanding_status IS NULL
+                OR outstanding_status = ''
+                OR outstanding_status = 'Outstanding'"
+        );
+        $total_outstanding = $outstanding_totals ? floatval($outstanding_totals->total_outstanding) : 0;
+        $total_wallet_paid = $outstanding_totals ? floatval($outstanding_totals->total_wallet_paid) : 0;
+        $total_remaining_balance = $outstanding_totals ? floatval($outstanding_totals->total_remaining_balance) : 0;
 
-        foreach ($outstanding_transactions as $outstanding_transaction) {
-            $wallet_paid = min(floatval($outstanding_transaction->amount_paid), floatval($outstanding_transaction->total_paid));
-            $remaining_balance = max(0, floatval($outstanding_transaction->total_paid) - $wallet_paid);
-            $total_outstanding += floatval($outstanding_transaction->total_paid);
-            $total_wallet_paid += $wallet_paid;
-            $total_remaining_balance += $remaining_balance;
+        $month_totals = get_transient(NGUK_Database::monthly_cache_key('ukng'));
+
+        if ($month_totals === false) {
+            $month_totals = $wpdb->get_results(
+                "SELECT DATE_FORMAT(created_at, '%M %Y') as month_year,
+                        COUNT(*) as total_transactions,
+                        SUM(pounds_sent) as total_pounds,
+                        SUM(commission_amount) as total_profit,
+                        SUM(total_paid) as total_paid,
+                        SUM(naira_amount) as total_naira
+                 FROM $transactions_table
+                 GROUP BY YEAR(created_at), MONTH(created_at)
+                 ORDER BY created_at ASC"
+            );
+
+            set_transient(NGUK_Database::monthly_cache_key('ukng'), $month_totals, HOUR_IN_SECONDS);
         }
 
-        $month_totals = $wpdb->get_results(
-            "SELECT DATE_FORMAT(created_at, '%M %Y') as month_year,
-                    COUNT(*) as total_transactions,
-                    SUM(pounds_sent) as total_pounds,
-                    SUM(commission_amount) as total_profit,
-                    SUM(total_paid) as total_paid,
-                    SUM(naira_amount) as total_naira
-             FROM $transactions_table
-             GROUP BY YEAR(created_at), MONTH(created_at)
-             ORDER BY created_at DESC"
+        $chart_month_totals = (array) $month_totals;
+        $month_totals = array_reverse((array) $month_totals);
+        $chart_labels = array();
+        $chart_turnover = array();
+        $chart_profit = array();
+        $chart_volume = array();
+
+        foreach ($chart_month_totals as $chart_month) {
+            $chart_labels[] = $chart_month->month_year;
+            $chart_turnover[] = round(floatval($chart_month->total_pounds), 2);
+            $chart_profit[] = round(floatval($chart_month->total_profit), 2);
+            $chart_volume[] = intval($chart_month->total_transactions);
+        }
+
+        $chart_data = array(
+            'labels' => $chart_labels,
+            'turnover' => $chart_turnover,
+            'profit' => $chart_profit,
+            'volume' => $chart_volume,
+            'turnoverLabel' => 'Monthly Turnover (GBP)',
+            'profitLabel' => 'Monthly Profit/Commission (GBP)'
         );
 
         ?>
@@ -983,6 +1150,7 @@ class UKNG_Dashboard {
                     'overview' => 'Overview',
                     'payments' => 'Payments',
                     'customers' => 'Customers',
+                    'favourites' => 'Favourite Customers',
                     'transactions' => 'Transactions',
                     'outstanding' => 'Outstanding Balance',
                     'commissions' => 'Commissions',
@@ -993,9 +1161,12 @@ class UKNG_Dashboard {
 
                 if ($ukng_is_staff) {
                     $nav_items = array(
+                        'overview' => 'Overview',
                         'payments' => 'Payments',
                         'customers' => 'Customers',
-                        'transactions' => 'Transactions'
+                        'favourites' => 'Favourite Customers',
+                        'transactions' => 'Transactions',
+                        'reports' => 'Reports'
                     );
                 }
 
@@ -1079,12 +1250,32 @@ class UKNG_Dashboard {
                 <h2>Overview</h2>
                 <div class="ukng-grid">
                     <div class="ukng-card"><span>Today's Rate</span><strong><?php echo esc_html(number_format(floatval($exchange_rate), 2)); ?></strong></div>
-                    <div class="ukng-card"><span>Customers</span><strong><?php echo esc_html(count($all_customers)); ?></strong></div>
+                    <div class="ukng-card"><span>Customers</span><strong><?php echo esc_html(number_format($all_customer_count)); ?></strong></div>
                     <div class="ukng-card"><span>Transactions</span><strong><?php echo esc_html(count($transactions)); ?></strong></div>
                     <div class="ukng-card"><span>Outstanding Balance</span><strong>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></strong></div>
                     <?php NGUK_Reminders::render_overview_widget('ukng-card', 'ukng'); ?>
                 </div>
+                <div class="nguk-chart-panel">
+                    <h2>Monthly Performance</h2>
+                    <script type="application/json" id="ngukDashboardChartData"><?php echo wp_json_encode($chart_data); ?></script>
+                    <div class="nguk-chart-grid">
+                        <div class="nguk-chart-card">
+                            <h3>Monthly Turnover</h3>
+                            <canvas id="ngukTurnoverChart" aria-label="Monthly turnover chart" role="img"></canvas>
+                        </div>
+                        <div class="nguk-chart-card">
+                            <h3>Monthly Profit/Commission</h3>
+                            <canvas id="ngukProfitChart" aria-label="Monthly profit chart" role="img"></canvas>
+                        </div>
+                        <div class="nguk-chart-card">
+                            <h3>Transaction Volume</h3>
+                            <canvas id="ngukVolumeChart" aria-label="Transaction volume chart" role="img"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+            <?php NGUK_Productivity::render_favourites_panel('ukng', self::panel_class('favourites', $current_view)); ?>
 
             <div class="<?php echo esc_attr(self::panel_class('payments', $current_view)); ?>">
                 <h2>Create UK to Nigeria Transaction</h2>
@@ -1093,10 +1284,16 @@ class UKNG_Dashboard {
                         <tr>
                             <th>Customer</th>
                             <td>
+                                <div class="nguk-customer-autocomplete" data-select="#ukng_customer_select" data-direction="ukng">
+                                    <input type="search" placeholder="Search customer by name or phone" autocomplete="off">
+                                    <div class="nguk-customer-suggestions" role="listbox"></div>
+                                </div>
                                 <select id="ukng_customer_select" name="customer_id" required>
                                     <option value="">Select Customer</option>
                                     <?php foreach ($all_customers as $customer) { ?>
-                                        <option value="<?php echo intval($customer->id); ?>" <?php selected(isset($_GET['customer_id']) ? intval($_GET['customer_id']) : 0, $customer->id); ?>>
+                                        <option value="<?php echo intval($customer->id); ?>"
+                                                data-phone="<?php echo esc_attr(isset($customer->phone_number) ? $customer->phone_number : ''); ?>"
+                                                <?php selected($selected_payment_customer_id, $customer->id); ?>>
                                             <?php echo esc_html(strtoupper($customer->customer_name)); ?>
                                         </option>
                                     <?php } ?>
@@ -1111,7 +1308,7 @@ class UKNG_Dashboard {
                                     <?php foreach ($beneficiaries as $beneficiary) { ?>
                                         <option value="<?php echo intval($beneficiary->id); ?>"
                                                 data-customer-id="<?php echo intval($beneficiary->customer_id); ?>"
-                                                <?php selected(isset($_GET['beneficiary_id']) ? intval($_GET['beneficiary_id']) : 0, $beneficiary->id); ?>>
+                                                <?php selected($selected_payment_beneficiary_id, $beneficiary->id); ?>>
                                             <?php echo esc_html(strtoupper($beneficiary->beneficiary_name) . ' - ' . $beneficiary->bank_name); ?>
                                         </option>
                                     <?php } ?>
@@ -1128,7 +1325,7 @@ class UKNG_Dashboard {
                         </tr>
                         <tr>
                             <th>Beneficiary Gets</th>
-                            <td><input type="text" id="ukng_naira_preview" readonly></td>
+                            <td><input type="number" step="0.01" min="1" id="ukng_naira_preview" autocomplete="off"></td>
                         </tr>
                     </table>
                     <p><input type="submit" name="ukng_create_transaction" class="button button-primary" value="Create Transaction"></p>
@@ -1137,7 +1334,13 @@ class UKNG_Dashboard {
 
             <div class="<?php echo esc_attr(self::panel_class('customers', $current_view)); ?>">
                 <h2>Customers</h2>
-                <p><a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_add_customer=1')); ?>">Add Customer</a></p>
+                <p>
+                    <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers&ukng_add_customer=1')); ?>">Add Customer</a>
+                    <?php if (current_user_can(NGUK_SETTINGS_CAP)) { ?>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=customers&direction=ukng&format=csv')); ?>">Export Customers CSV</a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=customers&direction=ukng&format=xlsx')); ?>">Export Customers Excel</a>
+                    <?php } ?>
+                </p>
 
                 <form method="get" class="ukng-search-form">
                     <input type="hidden" name="page" value="nguk-transfer">
@@ -1174,7 +1377,7 @@ class UKNG_Dashboard {
                 <table class="widefat striped">
                     <thead>
                         <tr>
-                            <th>No.</th><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th>
+                            <th>No.</th><th></th><th>Name</th><th>Phone</th><th>Email</th><th>KYC Documents</th><th>Profile</th>
                             <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
                                 <th>Delete</th>
                             <?php } ?>
@@ -1186,6 +1389,7 @@ class UKNG_Dashboard {
                             <?php foreach ($customers as $customer) { ?>
                                 <tr>
                                     <td><?php echo esc_html($customer_count++); ?></td>
+                                    <td><?php echo wp_kses_post(NGUK_Productivity::star_button('ukng', $customer)); ?></td>
                                     <td class="ukng-name-strong"><?php echo esc_html(strtoupper($customer->customer_name)); ?></td>
                                     <td><?php echo esc_html($customer->phone_number); ?></td>
                                     <td><?php echo esc_html($customer->email); ?></td>
@@ -1209,10 +1413,40 @@ class UKNG_Dashboard {
                         <?php } ?>
                     </tbody>
                 </table>
+
+                <?php if ($customer_total_pages > 1) { ?>
+                    <p style="margin-top:15px;">
+                        <?php for ($page_number = 1; $page_number <= $customer_total_pages; $page_number++) { ?>
+                            <?php
+                            $customer_page_url = add_query_arg(
+                                array_filter(
+                                    array(
+                                        'page' => 'nguk-transfer',
+                                        'ukng_view' => 'customers',
+                                        'ukng_customer_page' => $page_number,
+                                        'ukng_customer_search' => $customer_search
+                                    )
+                                ),
+                                admin_url('admin.php')
+                            );
+                            ?>
+                            <a class="button <?php echo $page_number == $customer_page ? 'button-primary' : ''; ?>"
+                               href="<?php echo esc_url($customer_page_url); ?>">
+                               <?php echo esc_html($page_number); ?>
+                            </a>
+                        <?php } ?>
+                    </p>
+                <?php } ?>
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('transactions', $current_view)); ?>">
                 <h2>Recent Transactions</h2>
+                <?php if (current_user_can(NGUK_PROCESS_CAP)) { ?>
+                    <p>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=transactions&direction=ukng&format=csv')); ?>">Export Transactions CSV</a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=transactions&direction=ukng&format=xlsx')); ?>">Export Transactions Excel</a>
+                    </p>
+                <?php } ?>
 
                 <form method="get" class="ukng-search-form">
                     <input type="hidden" name="page" value="nguk-transfer">
@@ -1276,6 +1510,7 @@ class UKNG_Dashboard {
                                     <td>
                                         <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view_receipt=' . intval($transaction->id))); ?>">Receipt</a>
                                         <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_receipt_id=' . intval($transaction->id))); ?>">Download</a>
+                                        <a class="button" href="<?php echo esc_url(NGUK_Productivity::repeat_url('ukng', $transaction->id)); ?>">Repeat Transaction</a>
                                         <?php if (current_user_can(NGUK_DELETE_CAP)) { ?>
                                             <a class="button" style="background:#dc2626;color:#fff;border-color:#dc2626;" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_delete_transaction=' . intval($transaction->id))); ?>" onclick="return confirm('Delete this transaction?');">Delete</a>
                                         <?php } ?>
@@ -1297,6 +1532,33 @@ class UKNG_Dashboard {
                         </tr>
                     </tfoot>
                 </table>
+
+                <?php if ($transaction_total_pages > 1) { ?>
+                    <p style="margin-top:15px;">
+                        <?php for ($page_number = 1; $page_number <= $transaction_total_pages; $page_number++) { ?>
+                            <?php
+                            $transaction_page_url = add_query_arg(
+                                array_filter(
+                                    array(
+                                        'page' => 'nguk-transfer',
+                                        'ukng_view' => 'transactions',
+                                        'ukng_transaction_page' => $page_number,
+                                        'ukng_transaction_search' => $transaction_search,
+                                        'ukng_transaction_from_date' => $transaction_from_date,
+                                        'ukng_transaction_to_date' => $transaction_to_date,
+                                        'ukng_transaction_quick_date' => $transaction_quick_date
+                                    )
+                                ),
+                                admin_url('admin.php')
+                            );
+                            ?>
+                            <a class="button <?php echo $page_number == $transaction_page ? 'button-primary' : ''; ?>"
+                               href="<?php echo esc_url($transaction_page_url); ?>">
+                               <?php echo esc_html($page_number); ?>
+                            </a>
+                        <?php } ?>
+                    </p>
+                <?php } ?>
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('outstanding', $current_view)); ?>">
@@ -1413,6 +1675,12 @@ class UKNG_Dashboard {
 
             <div class="<?php echo esc_attr(self::panel_class('reports', $current_view)); ?>">
                 <h2>Monthly Turnovers</h2>
+                <?php if (current_user_can(NGUK_REPORTS_CAP)) { ?>
+                    <p>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=reports&direction=ukng&format=csv')); ?>">Export Reports CSV</a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&nguk_export=reports&direction=ukng&format=xlsx')); ?>">Export Reports Excel</a>
+                    </p>
+                <?php } ?>
                 <table class="widefat striped"
                        style="margin-top:20px;border:1px solid #dbe4ee;border-radius:14px;overflow:hidden;font-size:15px;font-weight:700;box-shadow:0 14px 32px rgba(15,23,42,0.09);">
                     <thead style="background:#12372a;color:#fff;">
@@ -1473,7 +1741,7 @@ class UKNG_Dashboard {
 
             function filterBeneficiaries(){
                 var customerId = $('#ukng_customer_select').val();
-                var selectedBeneficiary = '<?php echo isset($_GET['beneficiary_id']) ? intval($_GET['beneficiary_id']) : ''; ?>';
+                var selectedBeneficiary = '<?php echo intval($selected_payment_beneficiary_id); ?>';
                 $('#ukng_beneficiary_select').empty();
                 beneficiaryOptions.each(function(){
                     var option = $(this).clone();
@@ -1489,7 +1757,7 @@ class UKNG_Dashboard {
             function calculatePreview(){
                 var pounds = parseFloat($('#ukng_pounds_sent').val()) || 0;
                 var rate = parseFloat($('#ukng_rate').val()) || 0;
-                $('#ukng_naira_preview').val(pounds > 0 && rate > 0 ? 'NGN ' + (pounds * rate).toFixed(2) : '');
+                $('#ukng_naira_preview').val(pounds > 0 && rate > 0 ? (pounds * rate).toFixed(2) : '');
             }
 
             $('#ukng_customer_select').on('change', filterBeneficiaries);
@@ -1528,6 +1796,7 @@ class UKNG_Dashboard {
         <div class="wrap">
             <h1>UK-Nigeria Customer Profile</h1>
             <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=customers')); ?>">Back to UK-Nigeria Dashboard</a></p>
+            <p><?php echo wp_kses_post(NGUK_Productivity::star_button('ukng', $customer)); ?> Favourite Customer</p>
 
             <table class="widefat striped" style="max-width:900px;">
                 <tr><th>Name</th><td class="ukng-name-strong"><?php echo esc_html(strtoupper($customer->customer_name)); ?></td></tr>
@@ -1609,6 +1878,9 @@ class UKNG_Dashboard {
                                     <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=payments&customer_id=' . intval($customer->id) . '&beneficiary_id=' . intval($beneficiary->id))); ?>">
                                         Send Money
                                     </a>
+                                    <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=payments&customer_id=' . intval($customer->id) . '&beneficiary_id=' . intval($beneficiary->id))); ?>">
+                                        Repeat Transaction
+                                    </a>
                                 </td>
                             </tr>
                         <?php } ?>
@@ -1617,6 +1889,8 @@ class UKNG_Dashboard {
                     <?php } ?>
                 </tbody>
             </table>
+
+            <?php NGUK_Productivity::render_history('ukng', $customer); ?>
         </div>
         <?php
 

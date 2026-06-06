@@ -3,7 +3,7 @@
 Plugin Name: Daphkoy Limited Money Transfer
 Plugin URI: https://daphkoy.com
 Description: Nigeria to United Kingdom Money Transfer Plugin
-Version: 2.5
+Version: 2.8
 Author: Beejay
 GitHub URI: https://github.com/seshon123-glitch/ng-uk-transfer
 GitHub Plugin URI: seshon123-glitch/ng-uk-transfer
@@ -31,6 +31,7 @@ define('NGUK_RECEIPT_CAP', 'nguk_view_transfer_receipts');
 define('NGUK_REPORTS_CAP', 'nguk_manage_transfer_reports');
 define('NGUK_SETTINGS_CAP', 'nguk_manage_transfer_settings');
 define('NGUK_DELETE_CAP', 'nguk_delete_transfer_records');
+define('NGUK_DB_VERSION', '2.8');
 
 /*
 |--------------------------------------------------------------------------
@@ -156,6 +157,57 @@ function nguk_transfer_staff_admin_bar($show_admin_bar) {
     return nguk_is_transfer_staff() ? false : $show_admin_bar;
 }
 
+function nguk_ajax_customer_search() {
+    if (!current_user_can(NGUK_ACCESS_CAP)) {
+        wp_send_json_error(array('message' => 'You do not have permission to search customers.'), 403);
+    }
+
+    check_ajax_referer('nguk_customer_search', 'nonce');
+
+    global $wpdb;
+
+    $direction = isset($_GET['direction']) && $_GET['direction'] === 'ukng'
+        ? 'ukng'
+        : 'nguk';
+    $term = isset($_GET['term'])
+        ? sanitize_text_field(wp_unslash($_GET['term']))
+        : '';
+
+    if (strlen($term) < 2) {
+        wp_send_json_success(array());
+    }
+
+    $table = $direction === 'ukng'
+        ? $wpdb->prefix . 'ukng_customers'
+        : $wpdb->prefix . 'nguk_customers';
+    $like = '%' . $wpdb->esc_like($term) . '%';
+
+    $customers = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT id, customer_name, phone_number
+             FROM $table
+             WHERE customer_name LIKE %s
+                OR phone_number LIKE %s
+             ORDER BY is_favourite DESC, customer_name ASC
+             LIMIT 20",
+            $like,
+            $like
+        )
+    );
+
+    $results = array();
+
+    foreach ((array) $customers as $customer) {
+        $results[] = array(
+            'id' => intval($customer->id),
+            'name' => strtoupper($customer->customer_name),
+            'phone' => isset($customer->phone_number) ? $customer->phone_number : ''
+        );
+    }
+
+    wp_send_json_success($results);
+}
+
 function nguk_apply_default_branding() {
     if (get_option('nguk_branding_version') === '2.4') {
         return;
@@ -174,6 +226,7 @@ function nguk_apply_default_branding() {
 
 require_once NGUK_PLUGIN_PATH . 'includes/class-database.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-reminders.php';
+require_once NGUK_PLUGIN_PATH . 'includes/class-productivity.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-dashboard.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-ukng-dashboard.php';
 require_once NGUK_PLUGIN_PATH . 'includes/class-frontend-website.php';
@@ -188,7 +241,9 @@ function nguk_activate_plugin() {
     nguk_setup_roles();
     nguk_apply_default_branding();
     NGUK_Database::create_tables();
+    NGUK_Database::add_performance_indexes();
     NGUK_Frontend_Website::setup_site();
+    update_option('nguk_db_version', NGUK_DB_VERSION);
     update_option('nguk_public_site_version', NGUK_Frontend_Website::VERSION);
 }
 
@@ -201,6 +256,7 @@ add_action('plugins_loaded', array('NGUK_Frontend_Website', 'init'));
 add_action('init', array('NGUK_Frontend_Website', 'maybe_setup_site'), 20);
 add_filter('login_redirect', 'nguk_transfer_staff_login_redirect', 10, 3);
 add_filter('show_admin_bar', 'nguk_transfer_staff_admin_bar');
+add_action('wp_ajax_nguk_customer_search', 'nguk_ajax_customer_search');
 add_action('admin_init', 'nguk_restrict_transfer_staff_admin', 1);
 add_action('admin_menu', 'nguk_transfer_staff_admin_menu', 999);
 
@@ -283,7 +339,73 @@ add_action(
     array('NGUK_Dashboard', 'download_receipt_pdf')
 );
 add_action('admin_enqueue_scripts', function() {
+    $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+
+    if ($page !== 'nguk-transfer') {
+        return;
+    }
+
+    $needs_media = isset($_GET['create_customer']) ||
+        isset($_GET['ukng_add_customer']) ||
+        isset($_GET['view_customer']) ||
+        isset($_GET['ukng_view_customer']);
+
+    if (!$needs_media) {
+        return;
+    }
+
     wp_enqueue_media();
+});
+
+add_action('admin_enqueue_scripts', function($hook) {
+    $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+
+    if ($page !== 'nguk-transfer') {
+        return;
+    }
+
+    wp_enqueue_style(
+        'nguk-enhancements',
+        NGUK_PLUGIN_URL . 'assets/nguk-enhancements.css',
+        array(),
+        '2.8'
+    );
+
+    $nguk_view = isset($_GET['nguk_view']) ? sanitize_key($_GET['nguk_view']) : '';
+    $ukng_view = isset($_GET['ukng_view']) ? sanitize_key($_GET['ukng_view']) : '';
+    $is_ukng = isset($_GET['ukng_view']) || isset($_GET['transfer_direction']) && $_GET['transfer_direction'] === 'ukng';
+    $active_view = $is_ukng ? $ukng_view : $nguk_view;
+    $needs_charts = $active_view === '' || $active_view === 'overview' || $active_view === 'reports';
+    $script_dependencies = array('jquery');
+
+    if ($needs_charts) {
+        wp_enqueue_script(
+            'chart-js',
+            'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
+            array(),
+            '4.4.7',
+            true
+        );
+
+        $script_dependencies[] = 'chart-js';
+    }
+
+    wp_enqueue_script(
+        'nguk-enhancements',
+        NGUK_PLUGIN_URL . 'assets/nguk-enhancements.js',
+        $script_dependencies,
+        '2.8',
+        true
+    );
+
+    wp_localize_script(
+        'nguk-enhancements',
+        'ngukEnhancements',
+        array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'customerSearchNonce' => wp_create_nonce('nguk_customer_search')
+        )
+    );
 });
 
 /*

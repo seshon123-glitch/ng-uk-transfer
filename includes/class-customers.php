@@ -37,9 +37,9 @@ class NGUK_Customers {
                 );
 
             $uk_bank_details =
-                sanitize_textarea_field(
-                    $_POST['uk_bank_details']
-                );
+                isset($_POST['uk_bank_details'])
+                    ? sanitize_textarea_field($_POST['uk_bank_details'])
+                    : '';
 
             // SAVE CUSTOMER
             $wpdb->insert(
@@ -180,23 +180,6 @@ class NGUK_Customers {
 
                             <textarea
                                 name="nigeria_bank_details"
-                                rows="4"
-                                class="large-text"
-                                required
-                            ></textarea>
-
-                        </td>
-
-                    </tr>
-
-                    <tr>
-
-                        <th>UK Bank Details</th>
-
-                        <td>
-
-                            <textarea
-                                name="uk_bank_details"
                                 rows="4"
                                 class="large-text"
                                 required

@@ -84,6 +84,8 @@ class NGUK_Database {
 
             kyc_documents longtext NULL,
 
+            is_favourite tinyint(1) NOT NULL DEFAULT 0,
+
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
 
             PRIMARY KEY (id)
@@ -163,6 +165,13 @@ self::create_reminders_table($charset_collate);
 
         global $wpdb;
 
+        $current_db_version = defined('NGUK_DB_VERSION') ? NGUK_DB_VERSION : '2.8';
+        $installed_db_version = get_option('nguk_db_version', '0');
+
+        if (version_compare($installed_db_version, $current_db_version, '>=')) {
+            return;
+        }
+
         $transactions_table = $wpdb->prefix . 'nguk_transactions';
         $customers_table = $wpdb->prefix . 'nguk_customers';
 
@@ -225,6 +234,133 @@ self::create_reminders_table($charset_collate);
                 "ALTER TABLE $customers_table ADD kyc_documents longtext NULL"
             );
 
+        }
+
+        $nguk_favourite_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $customers_table LIKE %s",
+                'is_favourite'
+            )
+        );
+
+        if (!$nguk_favourite_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $customers_table ADD is_favourite tinyint(1) NOT NULL DEFAULT 0"
+            );
+
+        }
+
+        self::add_performance_indexes();
+
+        update_option('nguk_db_version', $current_db_version);
+
+    }
+
+    private static function index_exists($table, $index_name) {
+
+        global $wpdb;
+
+        $exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW INDEX FROM $table WHERE Key_name = %s",
+                $index_name
+            )
+        );
+
+        return !empty($exists);
+
+    }
+
+    private static function table_exists($table) {
+
+        global $wpdb;
+
+        return $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW TABLES LIKE %s",
+                $table
+            )
+        ) === $table;
+
+    }
+
+    private static function add_index_if_missing($table, $index_name, $columns) {
+
+        global $wpdb;
+
+        if (!self::table_exists($table)) {
+            return;
+        }
+
+        if (self::index_exists($table, $index_name)) {
+            return;
+        }
+
+        $wpdb->query(
+            "ALTER TABLE $table ADD INDEX $index_name ($columns)"
+        );
+
+    }
+
+    public static function add_performance_indexes() {
+
+        global $wpdb;
+
+        $nguk_transactions = $wpdb->prefix . 'nguk_transactions';
+        $nguk_customers = $wpdb->prefix . 'nguk_customers';
+        $nguk_beneficiaries = $wpdb->prefix . 'nguk_beneficiaries';
+        $ukng_transactions = $wpdb->prefix . 'ukng_transactions';
+        $ukng_customers = $wpdb->prefix . 'ukng_customers';
+        $ukng_beneficiaries = $wpdb->prefix . 'ukng_beneficiaries';
+
+        self::add_index_if_missing($nguk_transactions, 'created_at', 'created_at');
+        self::add_index_if_missing($nguk_transactions, 'status', 'status');
+        self::add_index_if_missing($nguk_transactions, 'tracking_code', 'tracking_code');
+        self::add_index_if_missing($nguk_transactions, 'customer_name', 'customer_name(191)');
+        self::add_index_if_missing($nguk_transactions, 'beneficiary_name', 'beneficiary_name(191)');
+
+        self::add_index_if_missing($nguk_customers, 'customer_name', 'customer_name(191)');
+        self::add_index_if_missing($nguk_customers, 'phone_number', 'phone_number');
+        self::add_index_if_missing($nguk_customers, 'is_favourite', 'is_favourite');
+
+        self::add_index_if_missing($nguk_beneficiaries, 'customer_id', 'customer_id');
+        self::add_index_if_missing($nguk_beneficiaries, 'beneficiary_name', 'beneficiary_name(191)');
+
+        self::add_index_if_missing($ukng_transactions, 'created_at', 'created_at');
+        self::add_index_if_missing($ukng_transactions, 'status', 'status');
+        self::add_index_if_missing($ukng_transactions, 'outstanding_status', 'outstanding_status');
+        self::add_index_if_missing($ukng_transactions, 'customer_id', 'customer_id');
+        self::add_index_if_missing($ukng_transactions, 'beneficiary_id', 'beneficiary_id');
+        self::add_index_if_missing($ukng_transactions, 'tracking_code', 'tracking_code');
+        self::add_index_if_missing($ukng_transactions, 'customer_name', 'customer_name(191)');
+        self::add_index_if_missing($ukng_transactions, 'beneficiary_name', 'beneficiary_name(191)');
+
+        self::add_index_if_missing($ukng_customers, 'customer_name', 'customer_name(191)');
+        self::add_index_if_missing($ukng_customers, 'phone_number', 'phone_number');
+        self::add_index_if_missing($ukng_customers, 'is_favourite', 'is_favourite');
+
+        self::add_index_if_missing($ukng_beneficiaries, 'customer_id', 'customer_id');
+        self::add_index_if_missing($ukng_beneficiaries, 'beneficiary_name', 'beneficiary_name(191)');
+
+    }
+
+    public static function monthly_cache_key($direction = 'nguk') {
+
+        return $direction === 'ukng'
+            ? 'nguk_monthly_stats_ukng_v1'
+            : 'nguk_monthly_stats_nguk_v1';
+
+    }
+
+    public static function clear_monthly_cache($direction = '') {
+
+        if ($direction === 'nguk' || $direction === '') {
+            delete_transient(self::monthly_cache_key('nguk'));
+        }
+
+        if ($direction === 'ukng' || $direction === '') {
+            delete_transient(self::monthly_cache_key('ukng'));
         }
 
     }
@@ -308,6 +444,7 @@ self::create_reminders_table($charset_collate);
             address longtext NULL,
             notes longtext NULL,
             kyc_documents longtext NULL,
+            is_favourite tinyint(1) NOT NULL DEFAULT 0,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) $charset_collate;";
@@ -382,6 +519,21 @@ self::create_reminders_table($charset_collate);
 
             $wpdb->query(
                 "UPDATE $transactions_table SET auto_commission_amount = commission_amount WHERE auto_commission_amount = 0"
+            );
+
+        }
+
+        $ukng_favourite_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $customers_table LIKE %s",
+                'is_favourite'
+            )
+        );
+
+        if (!$ukng_favourite_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $customers_table ADD is_favourite tinyint(1) NOT NULL DEFAULT 0"
             );
 
         }
