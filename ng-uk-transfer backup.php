@@ -1,10 +1,10 @@
 <?php
 /*
-Plugin Name: NG-UK Money Transfer
-Plugin URI: https://daphkoy.com
-Description: Nigeria to United Kingdom Money Transfer Plugin
-Version: 2.0
-Author: Beejay
+Backup Name: NG-UK Money Transfer
+Backup URI: https://daphkoy.com
+Backup Description: Nigeria to United Kingdom Money Transfer Plugin
+Backup Version: 2.8
+Backup Author: Beejay
 */
 
 if (!defined('ABSPATH')) {

@@ -22,6 +22,7 @@ if (!defined('ABSPATH')) {
 
 define('NGUK_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('NGUK_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('NGUK_PLUGIN_VERSION', '2.8');
 define('NGUK_COMPANY_NAME', 'Daphkoy Limited');
 define('NGUK_DEFAULT_LOGO_URL', NGUK_PLUGIN_URL . 'assets/images/daphkoy-logo.png');
 define('NGUK_ACCESS_CAP', 'nguk_access_transfers');
@@ -368,7 +369,7 @@ add_action('admin_enqueue_scripts', function($hook) {
         'nguk-enhancements',
         NGUK_PLUGIN_URL . 'assets/nguk-enhancements.css',
         array(),
-        '2.8'
+        NGUK_PLUGIN_VERSION
     );
 
     $nguk_view = isset($_GET['nguk_view']) ? sanitize_key($_GET['nguk_view']) : '';
@@ -394,7 +395,7 @@ add_action('admin_enqueue_scripts', function($hook) {
         'nguk-enhancements',
         NGUK_PLUGIN_URL . 'assets/nguk-enhancements.js',
         $script_dependencies,
-        '2.8',
+        NGUK_PLUGIN_VERSION,
         true
     );
 
