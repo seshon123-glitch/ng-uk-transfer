@@ -3,7 +3,7 @@
 Backup Name: NG-UK Money Transfer
 Backup URI: https://daphkoy.com
 Backup Description: Nigeria to United Kingdom Money Transfer Plugin
-Backup Version: 2.8
+Backup Version: 2.8.1
 Backup Author: Beejay
 */
 

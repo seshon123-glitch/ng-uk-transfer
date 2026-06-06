@@ -3,7 +3,7 @@
 Plugin Name: Daphkoy Limited Money Transfer
 Plugin URI: https://daphkoy.com
 Description: Nigeria to United Kingdom Money Transfer Plugin
-Version: 2.8
+Version: 2.8.1
 Author: Beejay
 GitHub URI: https://github.com/seshon123-glitch/ng-uk-transfer
 GitHub Plugin URI: seshon123-glitch/ng-uk-transfer
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 
 define('NGUK_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('NGUK_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('NGUK_PLUGIN_VERSION', '2.8');
+define('NGUK_PLUGIN_VERSION', '2.8.1');
 define('NGUK_COMPANY_NAME', 'Daphkoy Limited');
 define('NGUK_DEFAULT_LOGO_URL', NGUK_PLUGIN_URL . 'assets/images/daphkoy-logo.png');
 define('NGUK_ACCESS_CAP', 'nguk_access_transfers');
@@ -158,6 +158,16 @@ function nguk_transfer_staff_admin_bar($show_admin_bar) {
     return nguk_is_transfer_staff() ? false : $show_admin_bar;
 }
 
+function nguk_dashboard_footer_version($footer_text) {
+    $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+
+    if ($page !== 'nguk-transfer') {
+        return $footer_text;
+    }
+
+    return 'Version ' . esc_html(NGUK_PLUGIN_VERSION);
+}
+
 function nguk_ajax_customer_search() {
     if (!current_user_can(NGUK_ACCESS_CAP)) {
         wp_send_json_error(array('message' => 'You do not have permission to search customers.'), 403);
@@ -257,6 +267,7 @@ add_action('plugins_loaded', array('NGUK_Frontend_Website', 'init'));
 add_action('init', array('NGUK_Frontend_Website', 'maybe_setup_site'), 20);
 add_filter('login_redirect', 'nguk_transfer_staff_login_redirect', 10, 3);
 add_filter('show_admin_bar', 'nguk_transfer_staff_admin_bar');
+add_filter('update_footer', 'nguk_dashboard_footer_version', 999);
 add_action('wp_ajax_nguk_customer_search', 'nguk_ajax_customer_search');
 add_action('admin_init', 'nguk_restrict_transfer_staff_admin', 1);
 add_action('admin_menu', 'nguk_transfer_staff_admin_menu', 999);
