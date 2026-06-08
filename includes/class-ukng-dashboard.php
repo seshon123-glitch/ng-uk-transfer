@@ -399,16 +399,23 @@ class UKNG_Dashboard {
 
     }
 
-    private static function status_options($selected_status) {
+    private static function statuses() {
 
-        $statuses = array(
+        return array(
             'Pending',
             'Payment Received',
             'Processing',
             'Paid Out',
+            'Paid',
             'Returned',
             'Cancelled'
         );
+
+    }
+
+    private static function status_options($selected_status) {
+
+        $statuses = self::statuses();
 
         foreach ($statuses as $status) {
             echo '<option value="' . esc_attr($status) . '" ' . selected($selected_status, $status, false) . '>' . esc_html($status) . '</option>';
@@ -427,6 +434,7 @@ class UKNG_Dashboard {
         $ukng_is_staff = function_exists('nguk_is_transfer_staff') && nguk_is_transfer_staff();
 
         NGUK_Database::create_ukng_tables();
+        NGUK_Database::cleanup_ukng_outstanding_recycle_bin();
 
         $customers_table = $wpdb->prefix . 'ukng_customers';
         $beneficiaries_table = $wpdb->prefix . 'ukng_beneficiaries';
@@ -735,16 +743,63 @@ class UKNG_Dashboard {
         }
 
         if (isset($_POST['ukng_update_status']) && current_user_can(NGUK_PROCESS_CAP)) {
-            $wpdb->update(
-                $transactions_table,
-                array(
-                    'status' => sanitize_text_field($_POST['transaction_status']),
-                    'status_updated_at' => current_time('mysql')
-                ),
-                array('id' => intval($_POST['transaction_id']))
-            );
-            NGUK_Database::clear_monthly_cache('ukng');
-            echo '<div class="updated"><p>Transaction status updated.</p></div>';
+            $new_status = isset($_POST['transaction_status'])
+                ? sanitize_text_field(wp_unslash($_POST['transaction_status']))
+                : '';
+
+            if (in_array($new_status, self::statuses(), true)) {
+                $wpdb->update(
+                    $transactions_table,
+                    array(
+                        'status' => $new_status,
+                        'status_updated_at' => current_time('mysql')
+                    ),
+                    array('id' => intval($_POST['transaction_id']))
+                );
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>Transaction status updated.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Please select a valid transaction status.</p></div>';
+            }
+            $current_view = 'transactions';
+        }
+
+        if (isset($_POST['ukng_bulk_update_status']) && current_user_can(NGUK_PROCESS_CAP)) {
+            $bulk_status = isset($_POST['ukng_bulk_status'])
+                ? sanitize_text_field(wp_unslash($_POST['ukng_bulk_status']))
+                : '';
+            $bulk_ids = isset($_POST['ukng_transaction_ids'])
+                ? array_map('intval', (array) $_POST['ukng_transaction_ids'])
+                : array();
+            $bulk_ids = array_values(array_filter(array_unique($bulk_ids)));
+
+            if (
+                isset($_POST['ukng_bulk_status_nonce']) &&
+                wp_verify_nonce($_POST['ukng_bulk_status_nonce'], 'ukng_bulk_status_update') &&
+                in_array($bulk_status, self::statuses(), true) &&
+                !empty($bulk_ids)
+            ) {
+                $id_placeholders = implode(',', array_fill(0, count($bulk_ids), '%d'));
+                $params = array_merge(
+                    array($bulk_status, current_time('mysql')),
+                    $bulk_ids
+                );
+
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE $transactions_table
+                         SET status = %s, status_updated_at = %s
+                         WHERE id IN ($id_placeholders)",
+                        $params
+                    )
+                );
+
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>' . esc_html(count($bulk_ids)) . ' selected transaction(s) updated to ' . esc_html($bulk_status) . '.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Please select one or more transactions and a valid status.</p></div>';
+            }
+
             $current_view = 'transactions';
         }
 
@@ -787,23 +842,123 @@ class UKNG_Dashboard {
         }
 
         if (isset($_GET['ukng_clear_outstanding']) && current_user_can(NGUK_SETTINGS_CAP)) {
+            $outstanding_id = intval($_GET['ukng_clear_outstanding']);
             $clear_transaction = $wpdb->get_row(
                 $wpdb->prepare(
-                    "SELECT total_paid FROM $transactions_table WHERE id = %d",
-                    intval($_GET['ukng_clear_outstanding'])
+                    "SELECT outstanding_status FROM $transactions_table WHERE id = %d",
+                    $outstanding_id
                 )
             );
 
-            $wpdb->update(
-                $transactions_table,
-                array(
-                    'outstanding_status' => 'Cleared',
-                    'amount_paid' => $clear_transaction ? floatval($clear_transaction->total_paid) : 0
-                ),
-                array('id' => intval($_GET['ukng_clear_outstanding']))
+            if (
+                $outstanding_id > 0 &&
+                $clear_transaction &&
+                isset($_GET['_wpnonce']) &&
+                wp_verify_nonce($_GET['_wpnonce'], 'ukng_recycle_outstanding_' . $outstanding_id)
+            ) {
+                $previous_status = !empty($clear_transaction->outstanding_status)
+                    ? $clear_transaction->outstanding_status
+                    : 'Outstanding';
+
+                $wpdb->update(
+                    $transactions_table,
+                    array(
+                        'outstanding_status' => 'Deleted',
+                        'outstanding_deleted_at' => current_time('mysql'),
+                        'outstanding_previous_status' => $previous_status
+                    ),
+                    array('id' => $outstanding_id)
+                );
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>Outstanding balance moved to the recycle bin.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Outstanding balance delete request could not be verified.</p></div>';
+            }
+            $current_view = 'outstanding';
+        }
+
+        if (isset($_GET['ukng_reinstate_outstanding']) && current_user_can(NGUK_SETTINGS_CAP)) {
+            $outstanding_id = intval($_GET['ukng_reinstate_outstanding']);
+            $deleted_transaction = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT outstanding_previous_status FROM $transactions_table WHERE id = %d AND outstanding_status = 'Deleted'",
+                    $outstanding_id
+                )
             );
-            NGUK_Database::clear_monthly_cache('ukng');
-            echo '<div class="updated"><p>Outstanding balance cleared.</p></div>';
+
+            if (
+                $outstanding_id > 0 &&
+                $deleted_transaction &&
+                isset($_GET['_wpnonce']) &&
+                wp_verify_nonce($_GET['_wpnonce'], 'ukng_reinstate_outstanding_' . $outstanding_id)
+            ) {
+                $restore_status = !empty($deleted_transaction->outstanding_previous_status)
+                    ? $deleted_transaction->outstanding_previous_status
+                    : 'Outstanding';
+
+                $wpdb->update(
+                    $transactions_table,
+                    array(
+                        'outstanding_status' => $restore_status,
+                        'outstanding_deleted_at' => null,
+                        'outstanding_previous_status' => null
+                    ),
+                    array('id' => $outstanding_id)
+                );
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>Outstanding balance reinstated.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Outstanding balance could not be reinstated.</p></div>';
+            }
+            $current_view = 'outstanding';
+        }
+
+        if (isset($_GET['ukng_delete_outstanding_permanently']) && current_user_can(NGUK_SETTINGS_CAP)) {
+            $outstanding_id = intval($_GET['ukng_delete_outstanding_permanently']);
+
+            if (
+                $outstanding_id > 0 &&
+                isset($_GET['_wpnonce']) &&
+                wp_verify_nonce($_GET['_wpnonce'], 'ukng_delete_outstanding_permanently_' . $outstanding_id)
+            ) {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE $transactions_table
+                         SET outstanding_status = 'Cleared',
+                             amount_paid = total_paid,
+                             outstanding_deleted_at = NULL,
+                             outstanding_previous_status = NULL
+                         WHERE id = %d
+                           AND outstanding_status = 'Deleted'",
+                        $outstanding_id
+                    )
+                );
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>Outstanding balance permanently deleted.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Permanent delete request could not be verified.</p></div>';
+            }
+            $current_view = 'outstanding';
+        }
+
+        if (isset($_POST['ukng_empty_outstanding_recycle_bin']) && current_user_can(NGUK_SETTINGS_CAP)) {
+            if (
+                isset($_POST['ukng_empty_outstanding_recycle_bin_nonce']) &&
+                wp_verify_nonce($_POST['ukng_empty_outstanding_recycle_bin_nonce'], 'ukng_empty_outstanding_recycle_bin')
+            ) {
+                $wpdb->query(
+                    "UPDATE $transactions_table
+                     SET outstanding_status = 'Cleared',
+                         amount_paid = total_paid,
+                         outstanding_deleted_at = NULL,
+                         outstanding_previous_status = NULL
+                     WHERE outstanding_status = 'Deleted'"
+                );
+                NGUK_Database::clear_monthly_cache('ukng');
+                echo '<div class="updated"><p>Outstanding balance recycle bin emptied.</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>Empty recycle bin request could not be verified.</p></div>';
+            }
             $current_view = 'outstanding';
         }
 
@@ -1073,6 +1228,16 @@ class UKNG_Dashboard {
                 OR outstanding_status = 'Outstanding'
              ORDER BY id DESC"
         );
+        $outstanding_recycle_items = $wpdb->get_results(
+            "SELECT * FROM $transactions_table
+             WHERE outstanding_status = 'Deleted'
+             ORDER BY outstanding_deleted_at DESC, id DESC"
+        );
+        $outstanding_recycle_count = is_array($outstanding_recycle_items)
+            ? count($outstanding_recycle_items)
+            : 0;
+        $show_outstanding_recycle_bin = isset($_GET['ukng_outstanding_recycle'])
+            && $_GET['ukng_outstanding_recycle'] === '1';
         $commission_rules = $wpdb->get_results("SELECT * FROM $commissions_table ORDER BY min_amount ASC");
         $outstanding_totals = $wpdb->get_row(
             "SELECT
@@ -1481,16 +1646,33 @@ class UKNG_Dashboard {
                     <?php } ?>
                 </form>
 
+                <?php if (current_user_can(NGUK_PROCESS_CAP)) { ?>
+                    <form method="post" id="ukngBulkStatusForm" class="ukng-search-form" style="margin-top:0;">
+                        <?php wp_nonce_field('ukng_bulk_status_update', 'ukng_bulk_status_nonce'); ?>
+                        <label>
+                            Update Status
+                            <select name="ukng_bulk_status" required>
+                                <option value="">Select status</option>
+                                <?php foreach (self::statuses() as $bulk_status_option) { ?>
+                                    <option value="<?php echo esc_attr($bulk_status_option); ?>"><?php echo esc_html($bulk_status_option); ?></option>
+                                <?php } ?>
+                            </select>
+                        </label>
+                        <input type="submit" name="ukng_bulk_update_status" class="button button-primary" value="Apply to Selected">
+                    </form>
+                <?php } ?>
+
                 <table class="widefat striped ukng-transaction-table">
                     <thead>
                         <tr>
-                            <th>No.</th><th>Transaction ID</th><th>Customer</th><th>Phone</th><th>Beneficiary</th><th>Pounds</th><th>Commission</th><th>Total Paid</th><th>Naira</th><th>Status</th><th>Actions</th>
+                            <th><input type="checkbox" id="ukngSelectAllTransactions" aria-label="Select all transactions"></th><th>No.</th><th>Transaction ID</th><th>Customer</th><th>Phone</th><th>Beneficiary</th><th>Pounds</th><th>Commission</th><th>Total Paid</th><th>Naira</th><th>Status</th><th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($transactions) { $count = 1; ?>
                             <?php foreach ($transactions as $transaction) { ?>
                                 <tr>
+                                    <td><input type="checkbox" class="ukng-transaction-select" form="ukngBulkStatusForm" name="ukng_transaction_ids[]" value="<?php echo intval($transaction->id); ?>" aria-label="<?php echo esc_attr('Select transaction UKNG' . (9000 + intval($transaction->id))); ?>"></td>
                                     <td><?php echo $count++; ?></td>
                                     <td><?php echo esc_html('UKNG' . (9000 + intval($transaction->id))); ?></td>
                                     <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
@@ -1518,12 +1700,12 @@ class UKNG_Dashboard {
                                 </tr>
                             <?php } ?>
                         <?php } else { ?>
-                            <tr><td colspan="11">No UK to Nigeria transactions found.</td></tr>
+                            <tr><td colspan="12">No UK to Nigeria transactions found.</td></tr>
                         <?php } ?>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="5" style="text-align:right;">Totals</th>
+                            <th colspan="6" style="text-align:right;">Totals</th>
                             <th>GBP <?php echo esc_html(number_format($transaction_total_pounds, 2)); ?></th>
                             <th style="color:#15803d;font-weight:900;">GBP <?php echo esc_html(number_format($transaction_total_profit, 2)); ?></th>
                             <th>GBP <?php echo esc_html(number_format($transaction_total_paid, 2)); ?></th>
@@ -1559,65 +1741,155 @@ class UKNG_Dashboard {
                         <?php } ?>
                     </p>
                 <?php } ?>
+                <script>
+                (function(){
+                    var selectAll = document.getElementById('ukngSelectAllTransactions');
+                    var checkboxes = document.querySelectorAll('.ukng-transaction-select');
+
+                    if (!selectAll || !checkboxes.length) {
+                        return;
+                    }
+
+                    selectAll.addEventListener('change', function(){
+                        checkboxes.forEach(function(checkbox){
+                            checkbox.checked = selectAll.checked;
+                        });
+                    });
+                })();
+                </script>
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('outstanding', $current_view)); ?>">
-                <h2>Customer Wallet / Outstanding Balance</h2>
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <h2 style="margin:0;">Customer Wallet / Outstanding Balance</h2>
+                    <p style="margin:0;">
+                        <?php if ($show_outstanding_recycle_bin) { ?>
+                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding')); ?>">Active Balances</a>
+                        <?php } else { ?>
+                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_outstanding_recycle=1')); ?>">Recycle Bin (<?php echo esc_html($outstanding_recycle_count); ?>)</a>
+                        <?php } ?>
+                    </p>
+                </div>
                 <div class="ukng-grid" style="margin-bottom:18px;">
                     <div class="ukng-card"><span>Total Outstanding</span><strong>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></strong></div>
                     <div class="ukng-card"><span>Total Paid</span><strong>GBP <?php echo esc_html(number_format($total_wallet_paid, 2)); ?></strong></div>
                     <div class="ukng-card"><span>Remaining Balance</span><strong>GBP <?php echo esc_html(number_format($total_remaining_balance, 2)); ?></strong></div>
                 </div>
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th>Customer Name</th>
-                            <th>Total Outstanding</th>
-                            <th>Total Paid</th>
-                            <th>Remaining Balance</th>
-                            <th>Update Payment</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($outstanding_transactions) { ?>
-                            <?php foreach ($outstanding_transactions as $transaction) { ?>
-                                <?php
-                                $amount_paid = min(floatval($transaction->amount_paid), floatval($transaction->total_paid));
-                                $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
-                                ?>
-                                <tr>
-                                    <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
-                                    <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
-                                    <td>GBP <?php echo esc_html(number_format($amount_paid, 2)); ?></td>
-                                    <td>GBP <?php echo esc_html(number_format($remaining_balance, 2)); ?></td>
-                                    <td>
-                                        <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                            <input type="hidden" name="transaction_id" value="<?php echo intval($transaction->id); ?>">
-                                            <input type="number" step="0.01" min="0" max="<?php echo esc_attr($transaction->total_paid); ?>" name="amount_paid" value="<?php echo esc_attr($amount_paid); ?>" style="width:120px;">
-                                            <input type="submit" name="ukng_update_outstanding_payment" class="button" value="Save">
-                                        </form>
-                                    </td>
-                                    <td>
-                                        <a class="button" style="background:#16a34a;color:#fff;border-color:#16a34a;" href="<?php echo esc_url(admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_clear_outstanding=' . intval($transaction->id))); ?>" onclick="return confirm('Delete this outstanding balance after customer payment?');">Delete Balance</a>
-                                    </td>
-                                </tr>
+                <?php if ($show_outstanding_recycle_bin) { ?>
+                    <h3>Outstanding Balance Recycle Bin</h3>
+                    <?php if ($outstanding_recycle_count > 0) { ?>
+                        <form method="post" style="margin:0 0 12px;">
+                            <?php wp_nonce_field('ukng_empty_outstanding_recycle_bin', 'ukng_empty_outstanding_recycle_bin_nonce'); ?>
+                            <input type="submit"
+                                   name="ukng_empty_outstanding_recycle_bin"
+                                   class="button"
+                                   style="background:#dc2626;color:#fff;border-color:#dc2626;"
+                                   value="Empty Recycle Bin"
+                                   onclick="return confirm('Permanently delete all outstanding balances in the recycle bin?');">
+                        </form>
+                    <?php } ?>
+                    <table class="widefat striped">
+                        <thead>
+                            <tr>
+                                <th>Customer Name</th>
+                                <th>Total Outstanding</th>
+                                <th>Total Paid</th>
+                                <th>Remaining Balance</th>
+                                <th>Deleted At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($outstanding_recycle_items) { ?>
+                                <?php foreach ($outstanding_recycle_items as $transaction) { ?>
+                                    <?php
+                                    $amount_paid = min(floatval($transaction->amount_paid), floatval($transaction->total_paid));
+                                    $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
+                                    $deleted_at = !empty($transaction->outstanding_deleted_at)
+                                        ? date('d M Y h:i A', strtotime($transaction->outstanding_deleted_at))
+                                        : '';
+                                    $reinstate_url = wp_nonce_url(
+                                        admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_outstanding_recycle=1&ukng_reinstate_outstanding=' . intval($transaction->id)),
+                                        'ukng_reinstate_outstanding_' . intval($transaction->id)
+                                    );
+                                    $delete_permanently_url = wp_nonce_url(
+                                        admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_outstanding_recycle=1&ukng_delete_outstanding_permanently=' . intval($transaction->id)),
+                                        'ukng_delete_outstanding_permanently_' . intval($transaction->id)
+                                    );
+                                    ?>
+                                    <tr>
+                                        <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($amount_paid, 2)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($remaining_balance, 2)); ?></td>
+                                        <td><?php echo esc_html($deleted_at); ?></td>
+                                        <td>
+                                            <a class="button button-primary" href="<?php echo esc_url($reinstate_url); ?>">Reinstate</a>
+                                            <a class="button" style="background:#dc2626;color:#fff;border-color:#dc2626;" href="<?php echo esc_url($delete_permanently_url); ?>" onclick="return confirm('Permanently delete this outstanding balance?');">Delete Permanently</a>
+                                        </td>
+                                    </tr>
+                                <?php } ?>
+                            <?php } else { ?>
+                                <tr><td colspan="6">No outstanding balances are currently in the recycle bin.</td></tr>
                             <?php } ?>
-                        <?php } else { ?>
-                            <tr><td colspan="6">No outstanding UK to Nigeria balances found.</td></tr>
-                        <?php } ?>
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <th>Totals</th>
-                            <th>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></th>
-                            <th>GBP <?php echo esc_html(number_format($total_wallet_paid, 2)); ?></th>
-                            <th>GBP <?php echo esc_html(number_format($total_remaining_balance, 2)); ?></th>
-                            <th></th>
-                            <th></th>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </tbody>
+                    </table>
+                <?php } else { ?>
+                    <table class="widefat striped">
+                        <thead>
+                            <tr>
+                                <th>Customer Name</th>
+                                <th>Total Outstanding</th>
+                                <th>Total Paid</th>
+                                <th>Remaining Balance</th>
+                                <th>Update Payment</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($outstanding_transactions) { ?>
+                                <?php foreach ($outstanding_transactions as $transaction) { ?>
+                                    <?php
+                                    $amount_paid = min(floatval($transaction->amount_paid), floatval($transaction->total_paid));
+                                    $remaining_balance = max(0, floatval($transaction->total_paid) - $amount_paid);
+                                    $recycle_url = wp_nonce_url(
+                                        admin_url('admin.php?page=nguk-transfer&ukng_view=outstanding&ukng_clear_outstanding=' . intval($transaction->id)),
+                                        'ukng_recycle_outstanding_' . intval($transaction->id)
+                                    );
+                                    ?>
+                                    <tr>
+                                        <td class="ukng-name-strong"><?php echo esc_html(strtoupper($transaction->customer_name)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($transaction->total_paid, 2)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($amount_paid, 2)); ?></td>
+                                        <td>GBP <?php echo esc_html(number_format($remaining_balance, 2)); ?></td>
+                                        <td>
+                                            <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                                <input type="hidden" name="transaction_id" value="<?php echo intval($transaction->id); ?>">
+                                                <input type="number" step="0.01" min="0" max="<?php echo esc_attr($transaction->total_paid); ?>" name="amount_paid" value="<?php echo esc_attr($amount_paid); ?>" style="width:120px;">
+                                                <input type="submit" name="ukng_update_outstanding_payment" class="button" value="Save">
+                                            </form>
+                                        </td>
+                                        <td>
+                                            <a class="button" style="background:#16a34a;color:#fff;border-color:#16a34a;" href="<?php echo esc_url($recycle_url); ?>" onclick="return confirm('Move this outstanding balance to the recycle bin?');">Delete Balance</a>
+                                        </td>
+                                    </tr>
+                                <?php } ?>
+                            <?php } else { ?>
+                                <tr><td colspan="6">No outstanding UK to Nigeria balances found.</td></tr>
+                            <?php } ?>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th>Totals</th>
+                                <th>GBP <?php echo esc_html(number_format($total_outstanding, 2)); ?></th>
+                                <th>GBP <?php echo esc_html(number_format($total_wallet_paid, 2)); ?></th>
+                                <th>GBP <?php echo esc_html(number_format($total_remaining_balance, 2)); ?></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                <?php } ?>
             </div>
 
             <div class="<?php echo esc_attr(self::panel_class('commissions', $current_view)); ?>">

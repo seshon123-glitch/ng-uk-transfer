@@ -253,16 +253,28 @@ function nguk_activate_plugin() {
     nguk_apply_default_branding();
     NGUK_Database::create_tables();
     NGUK_Database::add_performance_indexes();
+    if (!wp_next_scheduled('nguk_cleanup_ukng_outstanding_recycle_bin')) {
+        wp_schedule_event(time(), 'daily', 'nguk_cleanup_ukng_outstanding_recycle_bin');
+    }
     NGUK_Frontend_Website::setup_site();
     update_option('nguk_db_version', NGUK_DB_VERSION);
     update_option('nguk_public_site_version', NGUK_Frontend_Website::VERSION);
 }
 
 register_activation_hook(__FILE__, 'nguk_activate_plugin');
+register_deactivation_hook(__FILE__, function() {
+    wp_clear_scheduled_hook('nguk_cleanup_ukng_outstanding_recycle_bin');
+});
 
 add_action('plugins_loaded', 'nguk_setup_roles');
 add_action('plugins_loaded', 'nguk_apply_default_branding');
 add_action('plugins_loaded', array('NGUK_Database', 'maybe_update_tables'));
+add_action('plugins_loaded', function() {
+    if (!wp_next_scheduled('nguk_cleanup_ukng_outstanding_recycle_bin')) {
+        wp_schedule_event(time(), 'daily', 'nguk_cleanup_ukng_outstanding_recycle_bin');
+    }
+});
+add_action('nguk_cleanup_ukng_outstanding_recycle_bin', array('NGUK_Database', 'cleanup_ukng_outstanding_recycle_bin'));
 add_action('plugins_loaded', array('NGUK_Frontend_Website', 'init'));
 add_action('init', array('NGUK_Frontend_Website', 'maybe_setup_site'), 20);
 add_filter('login_redirect', 'nguk_transfer_staff_login_redirect', 10, 3);
@@ -441,6 +453,8 @@ function nguk_dashboard_page() {
         isset($_GET['ukng_delete_customer']) ||
         isset($_GET['ukng_delete_transaction']) ||
         isset($_GET['ukng_clear_outstanding']) ||
+        isset($_GET['ukng_reinstate_outstanding']) ||
+        isset($_GET['ukng_delete_outstanding_permanently']) ||
         isset($_GET['ukng_delete_commission'])
     ) {
 

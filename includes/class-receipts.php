@@ -110,6 +110,14 @@ class NGUK_Receipts {
                         </tr>
 
                         <tr>
+                            <th>Beneficiary Name</th>
+
+                            <td>
+                                '.(isset($transaction->beneficiary_name) ? $transaction->beneficiary_name : '').'
+                            </td>
+                        </tr>
+
+                        <tr>
                             <th>Naira Paid</th>
 
                             <td>

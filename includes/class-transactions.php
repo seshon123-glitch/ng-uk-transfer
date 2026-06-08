@@ -27,6 +27,44 @@ class NGUK_Transactions {
                 return;
             }
 
+            $beneficiary_name = '';
+            $beneficiary_bank_details = $customer->uk_bank_details;
+            $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+            $beneficiary_id = isset($_POST['beneficiary_id'])
+                ? intval($_POST['beneficiary_id'])
+                : 0;
+
+            if ($beneficiary_id > 0) {
+                $beneficiary = $wpdb->get_row(
+                    $wpdb->prepare(
+                        "SELECT * FROM $beneficiaries_table WHERE id = %d AND customer_id = %d",
+                        $beneficiary_id,
+                        $customer_id
+                    )
+                );
+            } else {
+                $beneficiary = $wpdb->get_row(
+                    $wpdb->prepare(
+                        "SELECT * FROM $beneficiaries_table WHERE customer_id = %d ORDER BY id DESC LIMIT 1",
+                        $customer_id
+                    )
+                );
+            }
+
+            if ($beneficiary) {
+                $beneficiary_name = strtoupper($beneficiary->beneficiary_name);
+                $beneficiary_bank_details = implode(
+                    "\n",
+                    array_filter(
+                        array(
+                            $beneficiary->bank_name,
+                            $beneficiary->account_number,
+                            $beneficiary->sort_code
+                        )
+                    )
+                );
+            }
+
             $naira_amount = floatval(
                 $_POST['naira_amount']
             );
@@ -57,6 +95,8 @@ class NGUK_Transactions {
 
                     'customer_name' => $customer->customer_name,
 
+                    'beneficiary_name' => $beneficiary_name,
+
                     'naira_amount' => $naira_amount,
 
                     'pounds_amount' => $pounds_amount,
@@ -69,7 +109,7 @@ class NGUK_Transactions {
 
                     'nigeria_bank_details' => $customer->nigeria_bank_details,
 
-                    'uk_bank_details' => $customer->uk_bank_details,
+                    'uk_bank_details' => $beneficiary_bank_details,
 
                     'status' => 'Pending',
 

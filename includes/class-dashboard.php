@@ -198,6 +198,78 @@ class NGUK_Dashboard {
 
     }
 
+    private static function receipt_beneficiary_name($transaction) {
+
+        $saved_name = isset($transaction->beneficiary_name)
+            ? trim((string) $transaction->beneficiary_name)
+            : '';
+
+        if ($saved_name !== '') {
+            return strtoupper($saved_name);
+        }
+
+        global $wpdb;
+
+        $customers_table = $wpdb->prefix . 'nguk_customers';
+        $beneficiaries_table = $wpdb->prefix . 'nguk_beneficiaries';
+        $transactions_table = $wpdb->prefix . 'nguk_transactions';
+
+        $customer = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM $customers_table WHERE customer_name = %s ORDER BY id DESC LIMIT 1",
+                $transaction->customer_name
+            )
+        );
+
+        if (!$customer) {
+            return '';
+        }
+
+        $bank_details = isset($transaction->uk_bank_details)
+            ? (string) $transaction->uk_bank_details
+            : '';
+
+        $beneficiaries = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $beneficiaries_table WHERE customer_id = %d ORDER BY id DESC",
+                $customer->id
+            )
+        );
+
+        $matched_name = '';
+
+        foreach ((array) $beneficiaries as $beneficiary) {
+            $account_number = trim((string) $beneficiary->account_number);
+
+            if ($account_number !== '' && strpos($bank_details, $account_number) !== false) {
+                $matched_name = strtoupper($beneficiary->beneficiary_name);
+                break;
+            }
+        }
+
+        if ($matched_name === '' && count((array) $beneficiaries) === 1) {
+            $matched_name = strtoupper($beneficiaries[0]->beneficiary_name);
+        }
+
+        $beneficiary_name_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'beneficiary_name'
+            )
+        );
+
+        if ($matched_name !== '' && !empty($transaction->id) && $beneficiary_name_column) {
+            $wpdb->update(
+                $transactions_table,
+                array('beneficiary_name' => $matched_name),
+                array('id' => intval($transaction->id))
+            );
+        }
+
+        return $matched_name;
+
+    }
+
     public static function download_receipt_pdf() {
 
         if (
@@ -303,6 +375,7 @@ class NGUK_Dashboard {
         }
 
         $receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+        $receipt_beneficiary_name = self::receipt_beneficiary_name($transaction);
 
         $pdf_lines = array(
             'Transaction Receipt',
@@ -315,7 +388,7 @@ class NGUK_Dashboard {
             'Invoice: ' . $receipt_invoice_number,
             'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
             'Customer: ' . strtoupper($transaction->customer_name),
-            'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
+            'Beneficiary: ' . $receipt_beneficiary_name,
             '',
             'Nigeria Bank Details:',
             $transaction->nigeria_bank_details,
@@ -361,6 +434,8 @@ class NGUK_Dashboard {
             isset($_GET['ukng_add_customer']) ||
             isset($_GET['ukng_delete_transaction']) ||
             isset($_GET['ukng_clear_outstanding']) ||
+            isset($_GET['ukng_reinstate_outstanding']) ||
+            isset($_GET['ukng_delete_outstanding_permanently']) ||
             isset($_GET['ukng_delete_commission'])
         ) {
 
@@ -497,6 +572,7 @@ class NGUK_Dashboard {
             }
 
             $receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+            $receipt_beneficiary_name = self::receipt_beneficiary_name($transaction);
 
             $pdf_lines = array(
                 'Transaction Receipt',
@@ -509,7 +585,7 @@ class NGUK_Dashboard {
                 'Invoice: ' . $receipt_invoice_number,
                 'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
                 'Customer: ' . strtoupper($transaction->customer_name),
-                'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
+                'Beneficiary: ' . $receipt_beneficiary_name,
                 '',
                 'Nigeria Bank Details:',
                 $transaction->nigeria_bank_details,
@@ -952,6 +1028,7 @@ if (empty($receipt_uk_bank_details)) {
 }
 
 $receipt_invoice_number = 'INV' . (6700 + intval($transaction->id));
+$receipt_beneficiary_name = self::receipt_beneficiary_name($transaction);
 
 $receipt_url = admin_url(
     'admin.php?page=nguk-transfer&view_receipt=' . intval($transaction->id)
@@ -964,6 +1041,7 @@ $receipt_share_text = implode(
         'Invoice: ' . $receipt_invoice_number,
         'Business: ' . $business_name,
         'Customer: ' . strtoupper($transaction->customer_name),
+        'Beneficiary: ' . $receipt_beneficiary_name,
         'Naira Paid: NGN ' . number_format($transaction->naira_amount, 2),
         'Pounds Sent: GBP ' . number_format($receipt_pounds_sent, 2),
         'Buy Rate: ' . number_format($transaction->buy_rate, 2),
@@ -986,6 +1064,7 @@ $receipt_qr_url = self::qr_code_url(
     array(
         'Transaction ID: ' . $receipt_invoice_number,
         'Customer: ' . strtoupper($transaction->customer_name),
+        'Beneficiary: ' . $receipt_beneficiary_name,
         'Amount: GBP ' . number_format($receipt_pounds_sent, 2),
         'Status: ' . $transaction->status
     )
@@ -1002,7 +1081,7 @@ $download_receipt_lines = array(
     'Invoice: ' . $receipt_invoice_number,
     'Date: ' . date('d M Y h:i A', strtotime($transaction->created_at)),
         'Customer: ' . strtoupper($transaction->customer_name),
-        'Beneficiary: ' . strtoupper($transaction->beneficiary_name),
+        'Beneficiary: ' . $receipt_beneficiary_name,
     '',
     'Nigeria Bank Details:',
     $transaction->nigeria_bank_details,
@@ -1089,6 +1168,11 @@ margin-bottom:30px;
         <h2 style="margin-top:0;color:#2271b1;">
             Receiver Details
         </h2>
+
+        <p>
+            <strong>Beneficiary Name:</strong><br>
+            <?php echo esc_html($receipt_beneficiary_name); ?>
+        </p>
 
         <p>
             <strong>Beneficiary Bank:</strong><br>

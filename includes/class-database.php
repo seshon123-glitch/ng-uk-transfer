@@ -335,6 +335,7 @@ self::create_reminders_table($charset_collate);
         self::add_index_if_missing($ukng_transactions, 'tracking_code', 'tracking_code');
         self::add_index_if_missing($ukng_transactions, 'customer_name', 'customer_name(191)');
         self::add_index_if_missing($ukng_transactions, 'beneficiary_name', 'beneficiary_name(191)');
+        self::add_index_if_missing($ukng_transactions, 'outstanding_deleted_at', 'outstanding_deleted_at');
 
         self::add_index_if_missing($ukng_customers, 'customer_name', 'customer_name(191)');
         self::add_index_if_missing($ukng_customers, 'phone_number', 'phone_number');
@@ -496,6 +497,8 @@ self::create_reminders_table($charset_collate);
             status varchar(50) DEFAULT 'Pending',
             outstanding_status varchar(20) DEFAULT 'Outstanding',
             amount_paid float DEFAULT 0,
+            outstanding_deleted_at datetime NULL,
+            outstanding_previous_status varchar(20) NULL,
             tracking_code varchar(50) NULL,
             status_updated_at datetime NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -568,6 +571,36 @@ self::create_reminders_table($charset_collate);
 
         }
 
+        $outstanding_deleted_at_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'outstanding_deleted_at'
+            )
+        );
+
+        if (!$outstanding_deleted_at_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $transactions_table ADD outstanding_deleted_at datetime NULL"
+            );
+
+        }
+
+        $outstanding_previous_status_column = $wpdb->get_var(
+            $wpdb->prepare(
+                "SHOW COLUMNS FROM $transactions_table LIKE %s",
+                'outstanding_previous_status'
+            )
+        );
+
+        if (!$outstanding_previous_status_column) {
+
+            $wpdb->query(
+                "ALTER TABLE $transactions_table ADD outstanding_previous_status varchar(20) NULL"
+            );
+
+        }
+
         $wpdb->query(
             "UPDATE $transactions_table SET amount_paid = 0 WHERE amount_paid IS NULL"
         );
@@ -623,6 +656,38 @@ self::create_reminders_table($charset_collate);
 
             }
 
+        }
+
+    }
+
+    public static function cleanup_ukng_outstanding_recycle_bin() {
+
+        global $wpdb;
+
+        $transactions_table = $wpdb->prefix . 'ukng_transactions';
+
+        if (!self::table_exists($transactions_table)) {
+            return;
+        }
+
+        $cutoff = date('Y-m-d H:i:s', current_time('timestamp') - (7 * DAY_IN_SECONDS));
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE $transactions_table
+                 SET outstanding_status = 'Cleared',
+                     amount_paid = total_paid,
+                     outstanding_deleted_at = NULL,
+                     outstanding_previous_status = NULL
+                 WHERE outstanding_status = 'Deleted'
+                   AND outstanding_deleted_at IS NOT NULL
+                   AND outstanding_deleted_at <= %s",
+                $cutoff
+            )
+        );
+
+        if ($wpdb->rows_affected > 0) {
+            self::clear_monthly_cache('ukng');
         }
 
     }
